@@ -2,6 +2,8 @@
 
 #include <string_view>
 
+#include <vulkan/vulkan.h>
+
 struct GLFWwindow;
 
 namespace chimi::platform
@@ -22,8 +24,15 @@ public:
     bool ShouldClose() const;
 
     GLFWwindow* GetNativeHandle() const;
+    VkSurfaceKHR CreateVulkanSurface(VkInstance instance) const;
+    VkExtent2D GetFramebufferExtent() const;
+    bool WasFramebufferResized() const;
+    void ResetFramebufferResizedFlag();
 
 private:
+    static void GLFWFramebufferSizeCallback(GLFWwindow* window, int width, int height);
+
     GLFWwindow* m_window = nullptr;
+    bool m_framebufferResized = false;
 };
 }

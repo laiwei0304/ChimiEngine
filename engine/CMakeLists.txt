@@ -3,6 +3,9 @@ add_library(ChimiEngine
     core/Log.cpp
     platform/Window.cpp
     rhi/vulkan/VulkanInstance.cpp
+    rhi/vulkan/VulkanInstance.Device.cpp
+    rhi/vulkan/VulkanInstance.Swapchain.cpp
+    rhi/vulkan/VulkanInstance.Triangle.cpp
 )
 
 target_include_directories(ChimiEngine
@@ -29,6 +32,7 @@ target_compile_definitions(ChimiEngine
         GLFW_INCLUDE_NONE
         VK_NO_PROTOTYPES
     PRIVATE
+        CHIMI_SHADER_OUTPUT_DIR="${CHIMI_SHADER_OUTPUT_DIR}"
         $<$<BOOL:${CHIMI_ENABLE_VALIDATION}>:CHIMI_ENABLE_VALIDATION=1>
         $<$<NOT:$<BOOL:${CHIMI_ENABLE_VALIDATION}>>:CHIMI_ENABLE_VALIDATION=0>
 )

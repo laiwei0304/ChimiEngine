@@ -17,6 +17,8 @@ option(CHIMI_ENABLE_VALIDATION "Enable Vulkan validation layers in debug builds"
 
 find_package(Vulkan REQUIRED)
 
+set(CHIMI_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/shaders")
+
 include(cmake/Dependencies.cmake)
 
 add_subdirectory(engine)

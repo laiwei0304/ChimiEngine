@@ -34,7 +34,7 @@ int RunSandbox()
     try
     {
         chimi::platform::Window window(1280, 720, "Chimi Engine Sandbox");
-        chimi::rhi::vulkan::VulkanInstance instance;
+        chimi::rhi::vulkan::VulkanInstance instance(window);
 
         spdlog::info("Sandbox started successfully");
         spdlog::info("The window should remain open until you close it manually");
@@ -42,6 +42,12 @@ int RunSandbox()
         while (!window.ShouldClose())
         {
             window.PollEvents();
+            if (window.WasFramebufferResized())
+            {
+                window.ResetFramebufferResizedFlag();
+                instance.HandleResize();
+            }
+            instance.DrawFrame();
         }
 
         spdlog::info("Sandbox exiting");
