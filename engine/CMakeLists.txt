@@ -2,10 +2,12 @@ add_library(ChimiEngine
     core/Assert.cpp
     core/Log.cpp
     platform/Window.cpp
+    renderer/Renderer.cpp
     rhi/vulkan/VulkanInstance.cpp
     rhi/vulkan/VulkanInstance.Device.cpp
+    rhi/vulkan/VulkanInstance.Buffer.cpp
     rhi/vulkan/VulkanInstance.Swapchain.cpp
-    rhi/vulkan/VulkanInstance.Triangle.cpp
+    rhi/vulkan/VulkanInstance.Geometry.cpp
 )
 
 target_include_directories(ChimiEngine

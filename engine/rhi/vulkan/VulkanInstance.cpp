@@ -23,7 +23,7 @@ bool QueueFamilyIndices::IsComplete() const
     return graphicsFamily.has_value() && presentFamily.has_value();
 }
 
-VulkanInstance::VulkanInstance(const chimi::platform::Window& window)
+VulkanInstance::VulkanInstance(const chimi::platform::Window& window, const chimi::renderer::RenderFrameInput& frameInput)
     : m_window(&window)
 {
     VK_CHECK(volkInitialize());
@@ -55,11 +55,13 @@ VulkanInstance::VulkanInstance(const chimi::platform::Window& window)
 
     PickPhysicalDevice();
     CreateLogicalDevice();
+    CreateUploadContext();
     CreateSwapchain(window);
     CreateSwapchainImageViews();
+    CreateDepthResources();
     CreateFrameContexts();
     CreateSwapchainSemaphores();
-    CreateTriangleResources();
+    CreateSampleGeometryResources(frameInput);
 
     uint32_t physicalDeviceCount = 0;
     VK_CHECK(vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, nullptr));
@@ -117,8 +119,9 @@ VulkanInstance::~VulkanInstance()
     DestroyFrameContexts();
     DestroySwapchainSemaphores();
     DestroyGraphicsPipeline();
-    DestroyVertexBuffer();
+    DestroySampleGeometryResources();
     CleanupSwapchain();
+    DestroyUploadContext();
 
     if (m_device != VK_NULL_HANDLE)
     {

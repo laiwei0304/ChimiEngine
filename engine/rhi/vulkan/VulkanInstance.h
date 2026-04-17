@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <vector>
 
-#include <glm/vec2.hpp>
-#include <glm/vec3.hpp>
+#include "renderer/MeshData.h"
+#include "renderer/Renderer.h"
+
 #include <vulkan/vulkan.h>
 
 namespace chimi::platform
@@ -38,16 +40,36 @@ struct FrameContext
     VkFence inFlightFence = VK_NULL_HANDLE;
 };
 
-struct Vertex
+struct AllocatedBuffer
 {
-    glm::vec2 position;
-    glm::vec3 color;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+};
+
+struct AllocatedImage
+{
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkImageView imageView = VK_NULL_HANDLE;
+};
+
+struct UploadContext
+{
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+};
+
+struct MeshBuffer
+{
+    AllocatedBuffer vertexBuffer{};
+    AllocatedBuffer indexBuffer{};
+    uint32_t indexCount = 0;
 };
 
 class VulkanInstance
 {
 public:
-    explicit VulkanInstance(const chimi::platform::Window& window);
+    VulkanInstance(const chimi::platform::Window& window, const chimi::renderer::RenderFrameInput& frameInput);
     ~VulkanInstance();
 
     VulkanInstance(const VulkanInstance&) = delete;
@@ -84,7 +106,17 @@ private:
     static VkPresentModeKHR ChoosePresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D desiredExtent);
     static bool SupportsDynamicRendering(VkPhysicalDevice physicalDevice);
+    static VkFormat FindSupportedFormat(
+        VkPhysicalDevice physicalDevice,
+        const std::vector<VkFormat>& candidates,
+        VkImageTiling tiling,
+        VkFormatFeatureFlags features);
     static void TransitionSwapchainImage(
+        VkCommandBuffer commandBuffer,
+        VkImage image,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout);
+    static void TransitionDepthImage(
         VkCommandBuffer commandBuffer,
         VkImage image,
         VkImageLayout oldLayout,
@@ -95,6 +127,7 @@ private:
     void CreateLogicalDevice();
     void CreateSwapchain(const chimi::platform::Window& window);
     void CreateSwapchainImageViews();
+    void CreateDepthResources();
     void CreateFrameContexts();
     void CreateSwapchainSemaphores();
     void RecordClearCommandBuffer(FrameContext& frame, uint32_t imageIndex);
@@ -103,12 +136,21 @@ private:
     void DestroyFrameContexts();
     void DestroySwapchainSemaphores();
     FrameContext& GetCurrentFrame();
-    void CreateTriangleResources();
+    void CreateSampleGeometryResources(const chimi::renderer::RenderFrameInput& frameInput);
     void CreateGraphicsPipeline();
-    void CreateVertexBuffer();
+    MeshBuffer CreateMeshBuffer(const chimi::renderer::CpuMeshData& meshData);
+    void DrawMeshBuffer(VkCommandBuffer commandBuffer, const MeshBuffer& meshBuffer);
     void DestroyGraphicsPipeline();
-    void DestroyVertexBuffer();
+    void DestroySampleGeometryResources();
+    void CreateUploadContext();
+    void DestroyUploadContext();
+    AllocatedBuffer CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+    void DestroyBuffer(AllocatedBuffer& buffer);
+    void UploadBufferWithStaging(const void* data, VkDeviceSize size, AllocatedBuffer& destinationBuffer, VkBufferUsageFlags usage);
+    void CopyBuffer(VkBuffer sourceBuffer, VkBuffer destinationBuffer, VkDeviceSize size);
+    void ImmediateSubmit(const std::function<void(VkCommandBuffer)>& recordCommands);
     uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
+    VkFormat FindDepthFormat() const;
 
     const chimi::platform::Window* m_window = nullptr;
     VkInstance m_instance = VK_NULL_HANDLE;
@@ -123,12 +165,16 @@ private:
     std::vector<VkImage> m_swapchainImages;
     std::vector<VkImageView> m_swapchainImageViews;
     std::vector<VkImageLayout> m_swapchainImageLayouts;
+    AllocatedImage m_depthImage{};
+    VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
+    VkImageLayout m_depthImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     std::vector<VkSemaphore> m_renderFinishedSemaphores;
     std::vector<FrameContext> m_frameContexts;
+    UploadContext m_uploadContext{};
+    chimi::renderer::CameraData m_cameraData{};
     VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_graphicsPipeline = VK_NULL_HANDLE;
-    VkBuffer m_vertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory m_vertexBufferMemory = VK_NULL_HANDLE;
+    MeshBuffer m_sampleMeshBuffer{};
     uint32_t m_currentFrameIndex = 0;
     QueueFamilyIndices m_queueFamilyIndices{};
 };

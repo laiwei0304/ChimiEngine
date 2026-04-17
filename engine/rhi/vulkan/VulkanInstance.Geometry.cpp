@@ -4,21 +4,14 @@
 
 #include <array>
 #include <cstddef>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
-
 #include <volk.h>
 
 namespace chimi::rhi::vulkan
 {
 namespace
 {
-constexpr std::array<Vertex, 3> kTriangleVertices = {
-    Vertex{ .position = { 0.0f, -0.5f }, .color = { 1.0f, 0.2f, 0.2f } },
-    Vertex{ .position = { 0.5f, 0.5f }, .color = { 0.2f, 1.0f, 0.2f } },
-    Vertex{ .position = { -0.5f, 0.5f }, .color = { 0.2f, 0.4f, 1.0f } }
-};
 }
 
 void VulkanInstance::TransitionSwapchainImage(
@@ -82,6 +75,59 @@ void VulkanInstance::TransitionSwapchainImage(
         &barrier);
 }
 
+void VulkanInstance::TransitionDepthImage(
+    VkCommandBuffer commandBuffer,
+    VkImage image,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout)
+{
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkPipelineStageFlags sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkPipelineStageFlags destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+    {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    }
+    else if (
+        oldLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+        && newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+    {
+        barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    }
+    else
+    {
+        throw std::runtime_error("Unsupported depth image layout transition");
+    }
+
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        sourceStage,
+        destinationStage,
+        0,
+        0,
+        nullptr,
+        0,
+        nullptr,
+        1,
+        &barrier);
+}
+
 std::vector<std::byte> VulkanInstance::ReadBinaryFile(const char* filePath)
 {
     std::ifstream file(filePath, std::ios::ate | std::ios::binary);
@@ -115,9 +161,16 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
         m_swapchainImages[imageIndex],
         m_swapchainImageLayouts[imageIndex],
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    TransitionDepthImage(
+        frame.commandBuffer,
+        m_depthImage.image,
+        m_depthImageLayout,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     VkClearValue clearValue{};
     clearValue.color = { { 0.08f, 0.12f, 0.18f, 1.0f } };
+    VkClearValue depthClearValue{};
+    depthClearValue.depthStencil = { 1.0f, 0 };
 
     VkRenderingAttachmentInfo colorAttachment{};
     colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -127,6 +180,14 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     colorAttachment.clearValue = clearValue;
 
+    VkRenderingAttachmentInfo depthAttachment{};
+    depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAttachment.imageView = m_depthImage.imageView;
+    depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.clearValue = depthClearValue;
+
     VkRenderingInfo renderingInfo{};
     renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     renderingInfo.renderArea.offset = { 0, 0 };
@@ -134,6 +195,7 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
     renderingInfo.layerCount = 1;
     renderingInfo.colorAttachmentCount = 1;
     renderingInfo.pColorAttachments = &colorAttachment;
+    renderingInfo.pDepthAttachment = &depthAttachment;
 
     vkCmdBeginRendering(frame.commandBuffer, &renderingInfo);
 
@@ -149,12 +211,17 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
     scissor.offset = { 0, 0 };
     scissor.extent = m_swapchainExtent;
 
-    const VkDeviceSize vertexBufferOffset = 0;
     vkCmdSetViewport(frame.commandBuffer, 0, 1, &viewport);
     vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
     vkCmdBindPipeline(frame.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-    vkCmdBindVertexBuffers(frame.commandBuffer, 0, 1, &m_vertexBuffer, &vertexBufferOffset);
-    vkCmdDraw(frame.commandBuffer, static_cast<uint32_t>(kTriangleVertices.size()), 1, 0, 0);
+    vkCmdPushConstants(
+        frame.commandBuffer,
+        m_pipelineLayout,
+        VK_SHADER_STAGE_VERTEX_BIT,
+        0,
+        sizeof(chimi::renderer::CameraData),
+        &m_cameraData);
+    DrawMeshBuffer(frame.commandBuffer, m_sampleMeshBuffer);
     vkCmdEndRendering(frame.commandBuffer);
 
     TransitionSwapchainImage(
@@ -165,12 +232,16 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
 
     VK_CHECK(vkEndCommandBuffer(frame.commandBuffer));
     m_swapchainImageLayouts[imageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    m_depthImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 }
 
-void VulkanInstance::CreateTriangleResources()
+void VulkanInstance::CreateSampleGeometryResources(const chimi::renderer::RenderFrameInput& frameInput)
 {
+    CHIMI_ASSERT(frameInput.meshData != nullptr, "RenderFrameInput must contain mesh data");
+
     CreateGraphicsPipeline();
-    CreateVertexBuffer();
+    m_sampleMeshBuffer = CreateMeshBuffer(*frameInput.meshData);
+    m_cameraData = frameInput.camera;
 }
 
 void VulkanInstance::CreateGraphicsPipeline()
@@ -215,18 +286,18 @@ void VulkanInstance::CreateGraphicsPipeline()
 
     VkVertexInputBindingDescription bindingDescription{};
     bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(Vertex);
+    bindingDescription.stride = sizeof(chimi::renderer::Vertex);
     bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
     std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
     attributeDescriptions[0].location = 0;
     attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[0].offset = offsetof(Vertex, position);
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = offsetof(chimi::renderer::Vertex, position);
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = offsetof(Vertex, color);
+    attributeDescriptions[1].offset = offsetof(chimi::renderer::Vertex, color);
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -260,6 +331,14 @@ void VulkanInstance::CreateGraphicsPipeline()
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT |
@@ -286,12 +365,19 @@ void VulkanInstance::CreateGraphicsPipeline()
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(chimi::renderer::CameraData);
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
     VK_CHECK(vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr, &m_pipelineLayout));
 
     VkPipelineRenderingCreateInfo pipelineRenderingInfo{};
     pipelineRenderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     pipelineRenderingInfo.colorAttachmentCount = 1;
     pipelineRenderingInfo.pColorAttachmentFormats = &m_swapchainImageFormat;
+    pipelineRenderingInfo.depthAttachmentFormat = m_depthFormat;
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -303,6 +389,7 @@ void VulkanInstance::CreateGraphicsPipeline()
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = m_pipelineLayout;
@@ -315,35 +402,34 @@ void VulkanInstance::CreateGraphicsPipeline()
     vkDestroyShaderModule(m_device, vertexShaderModule, nullptr);
 }
 
-void VulkanInstance::CreateVertexBuffer()
+MeshBuffer VulkanInstance::CreateMeshBuffer(const chimi::renderer::CpuMeshData& meshData)
 {
-    const VkDeviceSize bufferSize = sizeof(kTriangleVertices);
+    CHIMI_ASSERT(!meshData.vertices.empty(), "CpuMeshData must contain vertices");
+    CHIMI_ASSERT(!meshData.indices.empty(), "CpuMeshData must contain indices");
 
-    VkBufferCreateInfo bufferCreateInfo{};
-    bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferCreateInfo.size = bufferSize;
-    bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    MeshBuffer meshBuffer{};
+    UploadBufferWithStaging(
+        meshData.vertices.data(),
+        static_cast<VkDeviceSize>(meshData.vertices.size() * sizeof(chimi::renderer::Vertex)),
+        meshBuffer.vertexBuffer,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-    VK_CHECK(vkCreateBuffer(m_device, &bufferCreateInfo, nullptr, &m_vertexBuffer));
+    UploadBufferWithStaging(
+        meshData.indices.data(),
+        static_cast<VkDeviceSize>(meshData.indices.size() * sizeof(uint32_t)),
+        meshBuffer.indexBuffer,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
-    VkMemoryRequirements memoryRequirements{};
-    vkGetBufferMemoryRequirements(m_device, m_vertexBuffer, &memoryRequirements);
+    meshBuffer.indexCount = static_cast<uint32_t>(meshData.indices.size());
+    return meshBuffer;
+}
 
-    VkMemoryAllocateInfo allocateInfo{};
-    allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocateInfo.allocationSize = memoryRequirements.size;
-    allocateInfo.memoryTypeIndex = FindMemoryType(
-        memoryRequirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    VK_CHECK(vkAllocateMemory(m_device, &allocateInfo, nullptr, &m_vertexBufferMemory));
-    VK_CHECK(vkBindBufferMemory(m_device, m_vertexBuffer, m_vertexBufferMemory, 0));
-
-    void* mappedData = nullptr;
-    VK_CHECK(vkMapMemory(m_device, m_vertexBufferMemory, 0, bufferSize, 0, &mappedData));
-    std::memcpy(mappedData, kTriangleVertices.data(), static_cast<size_t>(bufferSize));
-    vkUnmapMemory(m_device, m_vertexBufferMemory);
+void VulkanInstance::DrawMeshBuffer(VkCommandBuffer commandBuffer, const MeshBuffer& meshBuffer)
+{
+    const VkDeviceSize vertexBufferOffset = 0;
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &meshBuffer.vertexBuffer.buffer, &vertexBufferOffset);
+    vkCmdBindIndexBuffer(commandBuffer, meshBuffer.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(commandBuffer, meshBuffer.indexCount, 1, 0, 0, 0);
 }
 
 void VulkanInstance::DestroyGraphicsPipeline()
@@ -361,18 +447,10 @@ void VulkanInstance::DestroyGraphicsPipeline()
     }
 }
 
-void VulkanInstance::DestroyVertexBuffer()
+void VulkanInstance::DestroySampleGeometryResources()
 {
-    if (m_vertexBuffer != VK_NULL_HANDLE)
-    {
-        vkDestroyBuffer(m_device, m_vertexBuffer, nullptr);
-        m_vertexBuffer = VK_NULL_HANDLE;
-    }
-
-    if (m_vertexBufferMemory != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(m_device, m_vertexBufferMemory, nullptr);
-        m_vertexBufferMemory = VK_NULL_HANDLE;
-    }
+    DestroyBuffer(m_sampleMeshBuffer.indexBuffer);
+    DestroyBuffer(m_sampleMeshBuffer.vertexBuffer);
+    m_sampleMeshBuffer.indexCount = 0;
 }
 }

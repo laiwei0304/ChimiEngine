@@ -12,6 +12,30 @@
 
 namespace chimi::rhi::vulkan
 {
+VkFormat VulkanInstance::FindSupportedFormat(
+    VkPhysicalDevice physicalDevice,
+    const std::vector<VkFormat>& candidates,
+    VkImageTiling tiling,
+    VkFormatFeatureFlags features)
+{
+    for (const VkFormat candidate : candidates)
+    {
+        VkFormatProperties properties{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, candidate, &properties);
+
+        const bool supportsFeatures = tiling == VK_IMAGE_TILING_LINEAR
+            ? (properties.linearTilingFeatures & features) == features
+            : (properties.optimalTilingFeatures & features) == features;
+
+        if (supportsFeatures)
+        {
+            return candidate;
+        }
+    }
+
+    throw std::runtime_error("Failed to find a supported Vulkan format");
+}
+
 SwapchainSupportDetails VulkanInstance::QuerySwapchainSupport(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
 {
     SwapchainSupportDetails details{};
@@ -180,6 +204,54 @@ void VulkanInstance::CreateSwapchainImageViews()
     }
 }
 
+void VulkanInstance::CreateDepthResources()
+{
+    m_depthFormat = FindDepthFormat();
+
+    VkImageCreateInfo imageCreateInfo{};
+    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageCreateInfo.extent.width = m_swapchainExtent.width;
+    imageCreateInfo.extent.height = m_swapchainExtent.height;
+    imageCreateInfo.extent.depth = 1;
+    imageCreateInfo.mipLevels = 1;
+    imageCreateInfo.arrayLayers = 1;
+    imageCreateInfo.format = m_depthFormat;
+    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VK_CHECK(vkCreateImage(m_device, &imageCreateInfo, nullptr, &m_depthImage.image));
+
+    VkMemoryRequirements memoryRequirements{};
+    vkGetImageMemoryRequirements(m_device, m_depthImage.image, &memoryRequirements);
+
+    VkMemoryAllocateInfo allocateInfo{};
+    allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocateInfo.allocationSize = memoryRequirements.size;
+    allocateInfo.memoryTypeIndex = FindMemoryType(
+        memoryRequirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VK_CHECK(vkAllocateMemory(m_device, &allocateInfo, nullptr, &m_depthImage.memory));
+    VK_CHECK(vkBindImageMemory(m_device, m_depthImage.image, m_depthImage.memory, 0));
+
+    VkImageViewCreateInfo imageViewCreateInfo{};
+    imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewCreateInfo.image = m_depthImage.image;
+    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewCreateInfo.format = m_depthFormat;
+    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+    imageViewCreateInfo.subresourceRange.levelCount = 1;
+    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewCreateInfo.subresourceRange.layerCount = 1;
+    VK_CHECK(vkCreateImageView(m_device, &imageViewCreateInfo, nullptr, &m_depthImage.imageView));
+
+    m_depthImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+}
+
 void VulkanInstance::CreateSwapchainSemaphores()
 {
     VkSemaphoreCreateInfo semaphoreCreateInfo{};
@@ -207,6 +279,24 @@ void VulkanInstance::DestroySwapchainSemaphores()
 
 void VulkanInstance::CleanupSwapchain()
 {
+    if (m_depthImage.imageView != VK_NULL_HANDLE)
+    {
+        vkDestroyImageView(m_device, m_depthImage.imageView, nullptr);
+        m_depthImage.imageView = VK_NULL_HANDLE;
+    }
+
+    if (m_depthImage.image != VK_NULL_HANDLE)
+    {
+        vkDestroyImage(m_device, m_depthImage.image, nullptr);
+        m_depthImage.image = VK_NULL_HANDLE;
+    }
+
+    if (m_depthImage.memory != VK_NULL_HANDLE)
+    {
+        vkFreeMemory(m_device, m_depthImage.memory, nullptr);
+        m_depthImage.memory = VK_NULL_HANDLE;
+    }
+
     for (VkImageView imageView : m_swapchainImageViews)
     {
         vkDestroyImageView(m_device, imageView, nullptr);
@@ -224,6 +314,8 @@ void VulkanInstance::CleanupSwapchain()
 
     m_swapchainImageFormat = VK_FORMAT_UNDEFINED;
     m_swapchainExtent = {};
+    m_depthFormat = VK_FORMAT_UNDEFINED;
+    m_depthImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
 
 void VulkanInstance::RecreateSwapchain()
@@ -241,6 +333,7 @@ void VulkanInstance::RecreateSwapchain()
     CleanupSwapchain();
     CreateSwapchain(*m_window);
     CreateSwapchainImageViews();
+    CreateDepthResources();
     DestroySwapchainSemaphores();
     CreateSwapchainSemaphores();
     DestroyGraphicsPipeline();

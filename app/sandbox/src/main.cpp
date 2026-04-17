@@ -1,5 +1,6 @@
 #include "core/Log.h"
 #include "platform/Window.h"
+#include "renderer/Renderer.h"
 #include "rhi/vulkan/VulkanInstance.h"
 
 #include <exception>
@@ -34,7 +35,8 @@ int RunSandbox()
     try
     {
         chimi::platform::Window window(1280, 720, "Chimi Engine Sandbox");
-        chimi::rhi::vulkan::VulkanInstance instance(window);
+        chimi::renderer::Renderer renderer;
+        chimi::rhi::vulkan::VulkanInstance instance(window, renderer.GetFrameInput());
 
         spdlog::info("Sandbox started successfully");
         spdlog::info("The window should remain open until you close it manually");

@@ -267,4 +267,17 @@ uint32_t VulkanInstance::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFla
 
     throw std::runtime_error("Failed to find a suitable Vulkan memory type");
 }
+
+VkFormat VulkanInstance::FindDepthFormat() const
+{
+    return FindSupportedFormat(
+        m_physicalDevice,
+        {
+            VK_FORMAT_D32_SFLOAT,
+            VK_FORMAT_D32_SFLOAT_S8_UINT,
+            VK_FORMAT_D24_UNORM_S8_UINT
+        },
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+}
 }
