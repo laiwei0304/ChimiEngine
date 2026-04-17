@@ -2,8 +2,7 @@
 
 #include "core/Assert.h"
 
-#include <array>
-#include <string>
+#include <vector>
 
 #include <GLFW/glfw3.h>
 #include <volk.h>
@@ -47,8 +46,36 @@ VulkanInstance::VulkanInstance()
     uint32_t physicalDeviceCount = 0;
     VK_CHECK(vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, nullptr));
 
+    std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
+    if (physicalDeviceCount > 0)
+    {
+        VK_CHECK(vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, physicalDevices.data()));
+    }
+
     spdlog::info("Created Vulkan instance");
     spdlog::info("Vulkan physical devices available: {}", physicalDeviceCount);
+
+    for (const VkPhysicalDevice physicalDevice : physicalDevices)
+    {
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+        spdlog::info(
+            "Detected GPU: {} | API {}.{}.{} | Driver {}",
+            properties.deviceName,
+            VK_API_VERSION_MAJOR(properties.apiVersion),
+            VK_API_VERSION_MINOR(properties.apiVersion),
+            VK_API_VERSION_PATCH(properties.apiVersion),
+            properties.driverVersion);
+    }
+
+    if (ValidationEnabled())
+    {
+        spdlog::info("Validation layers requested for this debug build");
+    }
+    else
+    {
+        spdlog::info("Validation layers are disabled for this build");
+    }
 }
 
 VulkanInstance::~VulkanInstance()

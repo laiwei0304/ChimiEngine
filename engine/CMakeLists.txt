@@ -12,15 +12,14 @@ target_include_directories(ChimiEngine
 
 target_link_libraries(ChimiEngine
     PUBLIC
-        Vulkan::Vulkan
         glfw
         glm::glm
         spdlog::spdlog
         volk
 )
 
-if (TARGET ChimiEngine::VMA)
-    target_link_libraries(ChimiEngine PUBLIC ChimiEngine::VMA)
+if (DEFINED CHIMI_VMA_TARGET)
+    target_link_libraries(ChimiEngine PUBLIC ${CHIMI_VMA_TARGET})
 endif()
 
 target_compile_features(ChimiEngine PUBLIC cxx_std_20)

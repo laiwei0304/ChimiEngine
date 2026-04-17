@@ -45,8 +45,12 @@ set(VMA_BUILD_DOCUMENTATION OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(glfw glm spdlog volk vma)
 
+if (TARGET volk)
+    target_include_directories(volk PUBLIC ${Vulkan_INCLUDE_DIRS})
+endif()
+
 if (TARGET GPUOpen::VulkanMemoryAllocator)
-    add_library(ChimiEngine::VMA ALIAS GPUOpen::VulkanMemoryAllocator)
+    set(CHIMI_VMA_TARGET GPUOpen::VulkanMemoryAllocator CACHE INTERNAL "")
 elseif (TARGET VulkanMemoryAllocator)
-    add_library(ChimiEngine::VMA ALIAS VulkanMemoryAllocator)
+    set(CHIMI_VMA_TARGET VulkanMemoryAllocator CACHE INTERNAL "")
 endif()
