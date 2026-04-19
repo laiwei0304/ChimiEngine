@@ -5,6 +5,11 @@
 
 namespace chimi::renderer
 {
+namespace
+{
+constexpr uint64_t kSampleCubeMeshId = 1;
+}
+
 Renderer::Renderer()
 {
     m_sampleMeshData.vertices = {
@@ -37,11 +42,19 @@ Renderer::Renderer()
     m_cameraData.viewProjection = projection * view;
 }
 
-RenderFrameInput Renderer::GetFrameInput() const
+RenderPacket Renderer::BuildRenderPacket() const
 {
-    RenderFrameInput frameInput{};
-    frameInput.meshData = &m_sampleMeshData;
-    frameInput.camera = m_cameraData;
-    return frameInput;
+    RenderPacket renderPacket{};
+    renderPacket.mainMeshPass.draws.push_back(MeshDrawPacket{
+        .meshId = kSampleCubeMeshId,
+        .meshData = &m_sampleMeshData,
+        .objectToClip = m_cameraData.viewProjection * glm::translate(glm::mat4(1.0f), glm::vec3(-0.8f, 0.0f, 0.0f))
+    });
+    renderPacket.mainMeshPass.draws.push_back(MeshDrawPacket{
+        .meshId = kSampleCubeMeshId,
+        .meshData = &m_sampleMeshData,
+        .objectToClip = m_cameraData.viewProjection * glm::translate(glm::mat4(1.0f), glm::vec3(0.8f, 0.0f, 0.0f))
+    });
+    return renderPacket;
 }
 }

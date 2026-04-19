@@ -337,7 +337,13 @@ void VulkanInstance::RecreateSwapchain()
     DestroySwapchainSemaphores();
     CreateSwapchainSemaphores();
     DestroyGraphicsPipeline();
-    CreateGraphicsPipeline();
+    if (m_meshPipelineState.valid)
+    {
+        const chimi::renderer::MeshPassPipelineConfig pipelineConfig = m_meshPipelineState.config;
+        CreateGraphicsPipeline(pipelineConfig);
+        m_meshPipelineState.config = pipelineConfig;
+        m_meshPipelineState.valid = true;
+    }
 
     spdlog::info(
         "Recreated swapchain | images={} format={} extent={}x{}",

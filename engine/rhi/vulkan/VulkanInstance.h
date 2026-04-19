@@ -5,9 +5,9 @@
 #include <optional>
 #include <vector>
 
-#include "renderer/MeshData.h"
-#include "renderer/Renderer.h"
+#include "renderer/RenderPacket.h"
 
+#include <glm/mat4x4.hpp>
 #include <vulkan/vulkan.h>
 
 namespace chimi::platform
@@ -66,10 +66,34 @@ struct MeshBuffer
     uint32_t indexCount = 0;
 };
 
+struct MeshGpuResource
+{
+    uint64_t meshId = 0;
+    MeshBuffer meshBuffer{};
+};
+
+struct MeshPipelineState
+{
+    chimi::renderer::MeshPassPipelineConfig config{};
+    bool valid = false;
+};
+
+struct PreparedMeshDraw
+{
+    const MeshBuffer* meshBuffer = nullptr;
+    glm::mat4 objectToClip{ 1.0f };
+};
+
+struct PreparedMeshPass
+{
+    std::vector<PreparedMeshDraw> draws;
+    float clearColor[4] = { 0.08f, 0.12f, 0.18f, 1.0f };
+};
+
 class VulkanInstance
 {
 public:
-    VulkanInstance(const chimi::platform::Window& window, const chimi::renderer::RenderFrameInput& frameInput);
+    explicit VulkanInstance(const chimi::platform::Window& window);
     ~VulkanInstance();
 
     VulkanInstance(const VulkanInstance&) = delete;
@@ -90,7 +114,7 @@ public:
     VkExtent2D GetSwapchainExtent() const;
     const std::vector<VkImage>& GetSwapchainImages() const;
     const std::vector<VkImageView>& GetSwapchainImageViews() const;
-    void DrawFrame();
+    void DrawFrame(const chimi::renderer::RenderPacket& renderPacket);
     void HandleResize();
 
 private:
@@ -130,14 +154,19 @@ private:
     void CreateDepthResources();
     void CreateFrameContexts();
     void CreateSwapchainSemaphores();
-    void RecordClearCommandBuffer(FrameContext& frame, uint32_t imageIndex);
+    void RecordFrameCommandBuffer(
+        FrameContext& frame,
+        uint32_t imageIndex,
+        const PreparedMeshPass& preparedMeshPass);
     void CleanupSwapchain();
     void RecreateSwapchain();
     void DestroyFrameContexts();
     void DestroySwapchainSemaphores();
     FrameContext& GetCurrentFrame();
-    void CreateSampleGeometryResources(const chimi::renderer::RenderFrameInput& frameInput);
-    void CreateGraphicsPipeline();
+    void SyncMeshResources(const chimi::renderer::RenderPacket& renderPacket);
+    void SyncGraphicsPipeline(const chimi::renderer::RenderPacket& renderPacket);
+    PreparedMeshPass BuildPreparedMeshPass(const chimi::renderer::RenderPacket& renderPacket) const;
+    void CreateGraphicsPipeline(const chimi::renderer::MeshPassPipelineConfig& config);
     MeshBuffer CreateMeshBuffer(const chimi::renderer::CpuMeshData& meshData);
     void DrawMeshBuffer(VkCommandBuffer commandBuffer, const MeshBuffer& meshBuffer);
     void DestroyGraphicsPipeline();
@@ -171,10 +200,10 @@ private:
     std::vector<VkSemaphore> m_renderFinishedSemaphores;
     std::vector<FrameContext> m_frameContexts;
     UploadContext m_uploadContext{};
-    chimi::renderer::CameraData m_cameraData{};
     VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_graphicsPipeline = VK_NULL_HANDLE;
-    MeshBuffer m_sampleMeshBuffer{};
+    MeshPipelineState m_meshPipelineState{};
+    std::vector<MeshGpuResource> m_meshGpuResources;
     uint32_t m_currentFrameIndex = 0;
     QueueFamilyIndices m_queueFamilyIndices{};
 };

@@ -1,6 +1,6 @@
 set(CHIMI_SANDBOX_SHADER_SOURCES
-    ${CMAKE_SOURCE_DIR}/shaders/triangle.vert
-    ${CMAKE_SOURCE_DIR}/shaders/triangle.frag
+    ${CMAKE_SOURCE_DIR}/shaders/mesh.vert
+    ${CMAKE_SOURCE_DIR}/shaders/mesh.frag
 )
 
 set(CHIMI_SANDBOX_SHADER_OUTPUTS)

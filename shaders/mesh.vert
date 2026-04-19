@@ -2,7 +2,7 @@
 
 layout(push_constant) uniform CameraData
 {
-    mat4 viewProjection;
+    mat4 objectToClip;
 } cameraData;
 
 layout(location = 0) in vec3 inPosition;
@@ -12,6 +12,6 @@ layout(location = 0) out vec3 fragColor;
 
 void main()
 {
-    gl_Position = cameraData.viewProjection * vec4(inPosition, 1.0);
+    gl_Position = cameraData.objectToClip * vec4(inPosition, 1.0);
     fragColor = inColor;
 }

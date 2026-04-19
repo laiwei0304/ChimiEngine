@@ -1,8 +1,7 @@
 #pragma once
 
 #include "renderer/MeshData.h"
-
-#include <glm/mat4x4.hpp>
+#include "renderer/RenderPacket.h"
 
 namespace chimi::renderer
 {
@@ -11,18 +10,12 @@ struct CameraData
     glm::mat4 viewProjection{ 1.0f };
 };
 
-struct RenderFrameInput
-{
-    const CpuMeshData* meshData = nullptr;
-    CameraData camera{};
-};
-
 class Renderer
 {
 public:
     Renderer();
 
-    RenderFrameInput GetFrameInput() const;
+    RenderPacket BuildRenderPacket() const;
 
 private:
     CpuMeshData m_sampleMeshData{};

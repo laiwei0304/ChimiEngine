@@ -23,7 +23,7 @@ bool QueueFamilyIndices::IsComplete() const
     return graphicsFamily.has_value() && presentFamily.has_value();
 }
 
-VulkanInstance::VulkanInstance(const chimi::platform::Window& window, const chimi::renderer::RenderFrameInput& frameInput)
+VulkanInstance::VulkanInstance(const chimi::platform::Window& window)
     : m_window(&window)
 {
     VK_CHECK(volkInitialize());
@@ -61,7 +61,6 @@ VulkanInstance::VulkanInstance(const chimi::platform::Window& window, const chim
     CreateDepthResources();
     CreateFrameContexts();
     CreateSwapchainSemaphores();
-    CreateSampleGeometryResources(frameInput);
 
     uint32_t physicalDeviceCount = 0;
     VK_CHECK(vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, nullptr));
@@ -155,8 +154,11 @@ VkExtent2D VulkanInstance::GetSwapchainExtent() const { return m_swapchainExtent
 const std::vector<VkImage>& VulkanInstance::GetSwapchainImages() const { return m_swapchainImages; }
 const std::vector<VkImageView>& VulkanInstance::GetSwapchainImageViews() const { return m_swapchainImageViews; }
 
-void VulkanInstance::DrawFrame()
+void VulkanInstance::DrawFrame(const chimi::renderer::RenderPacket& renderPacket)
 {
+    SyncGraphicsPipeline(renderPacket);
+    SyncMeshResources(renderPacket);
+    const PreparedMeshPass preparedMeshPass = BuildPreparedMeshPass(renderPacket);
     FrameContext& frame = GetCurrentFrame();
 
     VK_CHECK(vkWaitForFences(m_device, 1, &frame.inFlightFence, VK_TRUE, UINT64_MAX));
@@ -182,7 +184,7 @@ void VulkanInstance::DrawFrame()
         "Failed to acquire the next swapchain image");
 
     VK_CHECK(vkResetCommandPool(m_device, frame.commandPool, 0));
-    RecordClearCommandBuffer(frame, imageIndex);
+    RecordFrameCommandBuffer(frame, imageIndex, preparedMeshPass);
 
     const VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
     const VkSemaphore renderFinishedSemaphore = m_renderFinishedSemaphores[imageIndex];

@@ -1,18 +1,22 @@
 #pragma once
 
+#include <cstdint>
 #include <stdexcept>
 
 #include <vulkan/vulkan.h>
 
-#include "spdlog/spdlog.h"
+namespace chimi::core
+{
+[[noreturn]] void HandleAssertionFailure(const char* message);
+[[noreturn]] void HandleVulkanFailure(VkResult result);
+}
 
 #define CHIMI_ASSERT(condition, message)                                             \
     do                                                                               \
     {                                                                                \
         if (!(condition))                                                            \
         {                                                                            \
-            spdlog::critical("Assertion failed: {}", (message));                    \
-            throw std::runtime_error(message);                                       \
+            ::chimi::core::HandleAssertionFailure((message));                        \
         }                                                                            \
     } while (false)
 
@@ -22,8 +26,6 @@
         const VkResult chimiVkCheckResult = (expression);                            \
         if (chimiVkCheckResult != VK_SUCCESS)                                        \
         {                                                                            \
-            spdlog::critical("Vulkan call failed with VkResult={}",                 \
-                static_cast<int>(chimiVkCheckResult));                               \
-            throw std::runtime_error("Vulkan call failed");                         \
+            ::chimi::core::HandleVulkanFailure(chimiVkCheckResult);                  \
         }                                                                            \
     } while (false)

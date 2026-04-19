@@ -12,6 +12,25 @@ namespace chimi::rhi::vulkan
 {
 namespace
 {
+struct MeshDrawPushConstants
+{
+    glm::mat4 objectToClip{ 1.0f };
+};
+
+const MeshGpuResource* FindMeshGpuResource(
+    const std::vector<MeshGpuResource>& meshGpuResources,
+    uint64_t meshId)
+{
+    for (const MeshGpuResource& resource : meshGpuResources)
+    {
+        if (resource.meshId == meshId)
+        {
+            return &resource;
+        }
+    }
+
+    return nullptr;
+}
 }
 
 void VulkanInstance::TransitionSwapchainImage(
@@ -146,7 +165,10 @@ std::vector<std::byte> VulkanInstance::ReadBinaryFile(const char* filePath)
     return buffer;
 }
 
-void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imageIndex)
+void VulkanInstance::RecordFrameCommandBuffer(
+    FrameContext& frame,
+    uint32_t imageIndex,
+    const PreparedMeshPass& preparedMeshPass)
 {
     CHIMI_ASSERT(imageIndex < m_swapchainImages.size(), "Swapchain image index is out of range");
 
@@ -168,7 +190,14 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
         VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     VkClearValue clearValue{};
-    clearValue.color = { { 0.08f, 0.12f, 0.18f, 1.0f } };
+    clearValue.color = {
+        {
+            preparedMeshPass.clearColor[0],
+            preparedMeshPass.clearColor[1],
+            preparedMeshPass.clearColor[2],
+            preparedMeshPass.clearColor[3]
+        }
+    };
     VkClearValue depthClearValue{};
     depthClearValue.depthStencil = { 1.0f, 0 };
 
@@ -214,14 +243,21 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
     vkCmdSetViewport(frame.commandBuffer, 0, 1, &viewport);
     vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
     vkCmdBindPipeline(frame.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-    vkCmdPushConstants(
-        frame.commandBuffer,
-        m_pipelineLayout,
-        VK_SHADER_STAGE_VERTEX_BIT,
-        0,
-        sizeof(chimi::renderer::CameraData),
-        &m_cameraData);
-    DrawMeshBuffer(frame.commandBuffer, m_sampleMeshBuffer);
+    for (const PreparedMeshDraw& draw : preparedMeshPass.draws)
+    {
+        const MeshDrawPushConstants pushConstants{
+            .objectToClip = draw.objectToClip
+        };
+        vkCmdPushConstants(
+            frame.commandBuffer,
+            m_pipelineLayout,
+            VK_SHADER_STAGE_VERTEX_BIT,
+            0,
+            sizeof(MeshDrawPushConstants),
+            &pushConstants);
+        CHIMI_ASSERT(draw.meshBuffer != nullptr, "Prepared mesh draw must reference a valid mesh buffer");
+        DrawMeshBuffer(frame.commandBuffer, *draw.meshBuffer);
+    }
     vkCmdEndRendering(frame.commandBuffer);
 
     TransitionSwapchainImage(
@@ -235,22 +271,125 @@ void VulkanInstance::RecordClearCommandBuffer(FrameContext& frame, uint32_t imag
     m_depthImageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 }
 
-void VulkanInstance::CreateSampleGeometryResources(const chimi::renderer::RenderFrameInput& frameInput)
+PreparedMeshPass VulkanInstance::BuildPreparedMeshPass(const chimi::renderer::RenderPacket& renderPacket) const
 {
-    CHIMI_ASSERT(frameInput.meshData != nullptr, "RenderFrameInput must contain mesh data");
+    const chimi::renderer::MeshPassPacket& meshPass = renderPacket.mainMeshPass;
+    PreparedMeshPass preparedMeshPass{};
+    preparedMeshPass.clearColor[0] = meshPass.clearColor.r;
+    preparedMeshPass.clearColor[1] = meshPass.clearColor.g;
+    preparedMeshPass.clearColor[2] = meshPass.clearColor.b;
+    preparedMeshPass.clearColor[3] = meshPass.clearColor.a;
+    preparedMeshPass.draws.reserve(meshPass.draws.size());
 
-    CreateGraphicsPipeline();
-    m_sampleMeshBuffer = CreateMeshBuffer(*frameInput.meshData);
-    m_cameraData = frameInput.camera;
+    for (const chimi::renderer::MeshDrawPacket& draw : meshPass.draws)
+    {
+        const MeshGpuResource* meshGpuResource = FindMeshGpuResource(m_meshGpuResources, draw.meshId);
+        CHIMI_ASSERT(meshGpuResource != nullptr, "Mesh draw must reference a synchronized GPU mesh resource");
+        preparedMeshPass.draws.push_back(PreparedMeshDraw{
+            .meshBuffer = &meshGpuResource->meshBuffer,
+            .objectToClip = draw.objectToClip
+        });
+    }
+
+    return preparedMeshPass;
 }
 
-void VulkanInstance::CreateGraphicsPipeline()
+void VulkanInstance::SyncMeshResources(const chimi::renderer::RenderPacket& renderPacket)
+{
+    const chimi::renderer::MeshPassPacket& meshPass = renderPacket.mainMeshPass;
+    CHIMI_ASSERT(!meshPass.draws.empty(), "RenderPacket main mesh pass must contain at least one draw");
+
+    std::vector<const chimi::renderer::MeshDrawPacket*> uniqueMeshDraws;
+    uniqueMeshDraws.reserve(meshPass.draws.size());
+    for (const chimi::renderer::MeshDrawPacket& draw : meshPass.draws)
+    {
+        bool alreadyAdded = false;
+        for (const chimi::renderer::MeshDrawPacket* uniqueDraw : uniqueMeshDraws)
+        {
+            if (uniqueDraw->meshId == draw.meshId)
+            {
+                alreadyAdded = true;
+                break;
+            }
+        }
+
+        if (!alreadyAdded)
+        {
+            uniqueMeshDraws.push_back(&draw);
+        }
+    }
+
+    bool needsRebuild = m_meshGpuResources.size() != uniqueMeshDraws.size();
+    if (!needsRebuild)
+    {
+        for (const chimi::renderer::MeshDrawPacket* uniqueDraw : uniqueMeshDraws)
+        {
+            const MeshGpuResource* existingResource = FindMeshGpuResource(m_meshGpuResources, uniqueDraw->meshId);
+            if (existingResource == nullptr)
+            {
+                needsRebuild = true;
+                break;
+            }
+        }
+    }
+
+    if (!needsRebuild)
+    {
+        return;
+    }
+
+    DestroySampleGeometryResources();
+    m_meshGpuResources.reserve(uniqueMeshDraws.size());
+
+    for (const chimi::renderer::MeshDrawPacket* uniqueDraw : uniqueMeshDraws)
+    {
+        CHIMI_ASSERT(uniqueDraw->meshId != 0, "MeshDrawPacket must contain a valid meshId");
+        CHIMI_ASSERT(uniqueDraw->meshData != nullptr, "MeshDrawPacket must contain mesh data");
+        m_meshGpuResources.push_back(MeshGpuResource{
+            .meshId = uniqueDraw->meshId,
+            .meshBuffer = CreateMeshBuffer(*uniqueDraw->meshData)
+        });
+    }
+}
+
+void VulkanInstance::SyncGraphicsPipeline(const chimi::renderer::RenderPacket& renderPacket)
+{
+    const chimi::renderer::MeshPassPipelineConfig& desiredConfig = renderPacket.mainMeshPass.pipeline;
+    if (m_meshPipelineState.valid && m_meshPipelineState.config.pipelineKind == desiredConfig.pipelineKind
+        && m_meshPipelineState.config.cullMode == desiredConfig.cullMode
+        && m_meshPipelineState.config.frontFace == desiredConfig.frontFace
+        && m_meshPipelineState.config.depthTestEnabled == desiredConfig.depthTestEnabled
+        && m_meshPipelineState.config.depthWriteEnabled == desiredConfig.depthWriteEnabled)
+    {
+        return;
+    }
+
+    DestroyGraphicsPipeline();
+    CreateGraphicsPipeline(desiredConfig);
+    m_meshPipelineState.config = desiredConfig;
+    m_meshPipelineState.valid = true;
+}
+
+void VulkanInstance::CreateGraphicsPipeline(const chimi::renderer::MeshPassPipelineConfig& config)
 {
     const std::filesystem::path shaderDirectory = CHIMI_SHADER_OUTPUT_DIR;
+    const char* vertexShaderName = nullptr;
+    const char* fragmentShaderName = nullptr;
+
+    switch (config.pipelineKind)
+    {
+    case chimi::renderer::MeshPassPipelineKind::SolidColor:
+        vertexShaderName = "mesh.vert.spv";
+        fragmentShaderName = "mesh.frag.spv";
+        break;
+    default:
+        throw std::runtime_error("Unsupported mesh pipeline kind");
+    }
+
     const std::vector<std::byte> vertexShaderCode =
-        ReadBinaryFile((shaderDirectory / "triangle.vert.spv").string().c_str());
+        ReadBinaryFile((shaderDirectory / vertexShaderName).string().c_str());
     const std::vector<std::byte> fragmentShaderCode =
-        ReadBinaryFile((shaderDirectory / "triangle.frag.spv").string().c_str());
+        ReadBinaryFile((shaderDirectory / fragmentShaderName).string().c_str());
 
     VkShaderModuleCreateInfo vertexShaderModuleCreateInfo{};
     vertexShaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -322,8 +461,28 @@ void VulkanInstance::CreateGraphicsPipeline()
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    switch (config.cullMode)
+    {
+    case chimi::renderer::MeshCullMode::None:
+        rasterizer.cullMode = VK_CULL_MODE_NONE;
+        break;
+    case chimi::renderer::MeshCullMode::Back:
+        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        break;
+    default:
+        throw std::runtime_error("Unsupported mesh cull mode");
+    }
+    switch (config.frontFace)
+    {
+    case chimi::renderer::MeshFrontFace::CounterClockwise:
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        break;
+    case chimi::renderer::MeshFrontFace::Clockwise:
+        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        break;
+    default:
+        throw std::runtime_error("Unsupported mesh front face");
+    }
     rasterizer.depthBiasEnable = VK_FALSE;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -333,8 +492,8 @@ void VulkanInstance::CreateGraphicsPipeline()
 
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthTestEnable = config.depthTestEnabled ? VK_TRUE : VK_FALSE;
+    depthStencil.depthWriteEnable = config.depthWriteEnabled ? VK_TRUE : VK_FALSE;
     depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.stencilTestEnable = VK_FALSE;
@@ -368,7 +527,7 @@ void VulkanInstance::CreateGraphicsPipeline()
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(chimi::renderer::CameraData);
+    pushConstantRange.size = sizeof(MeshDrawPushConstants);
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
     VK_CHECK(vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr, &m_pipelineLayout));
@@ -445,12 +604,19 @@ void VulkanInstance::DestroyGraphicsPipeline()
         vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
         m_pipelineLayout = VK_NULL_HANDLE;
     }
+
+    m_meshPipelineState.valid = false;
 }
 
 void VulkanInstance::DestroySampleGeometryResources()
 {
-    DestroyBuffer(m_sampleMeshBuffer.indexBuffer);
-    DestroyBuffer(m_sampleMeshBuffer.vertexBuffer);
-    m_sampleMeshBuffer.indexCount = 0;
+    for (MeshGpuResource& resource : m_meshGpuResources)
+    {
+        DestroyBuffer(resource.meshBuffer.indexBuffer);
+        DestroyBuffer(resource.meshBuffer.vertexBuffer);
+        resource.meshBuffer.indexCount = 0;
+    }
+
+    m_meshGpuResources.clear();
 }
 }

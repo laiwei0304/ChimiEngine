@@ -30,13 +30,13 @@ LONG WINAPI SandboxUnhandledExceptionFilter(EXCEPTION_POINTERS* exceptionPointer
 
 int RunSandbox()
 {
-    chimi::core::InitializeLogging();
+        chimi::core::InitializeLogging();
 
     try
     {
         chimi::platform::Window window(1280, 720, "Chimi Engine Sandbox");
         chimi::renderer::Renderer renderer;
-        chimi::rhi::vulkan::VulkanInstance instance(window, renderer.GetFrameInput());
+        chimi::rhi::vulkan::VulkanInstance instance(window);
 
         spdlog::info("Sandbox started successfully");
         spdlog::info("The window should remain open until you close it manually");
@@ -44,12 +44,13 @@ int RunSandbox()
         while (!window.ShouldClose())
         {
             window.PollEvents();
+            const chimi::renderer::RenderPacket renderPacket = renderer.BuildRenderPacket();
             if (window.WasFramebufferResized())
             {
                 window.ResetFramebufferResizedFlag();
                 instance.HandleResize();
             }
-            instance.DrawFrame();
+            instance.DrawFrame(renderPacket);
         }
 
         spdlog::info("Sandbox exiting");
