@@ -1,42 +1,17 @@
-#include "rhi/vulkan/VulkanInstance.h"
+#include "rhi/vulkan/VulkanSwapchain.h"
 
 #include "core/Assert.h"
-#include "platform/Window.h"
 
 #include <algorithm>
 #include <limits>
-
+#include <stdexcept>
 #include <volk.h>
-
-#include "spdlog/spdlog.h"
 
 namespace chimi::rhi::vulkan
 {
-VkFormat VulkanInstance::FindSupportedFormat(
-    VkPhysicalDevice physicalDevice,
-    const std::vector<VkFormat>& candidates,
-    VkImageTiling tiling,
-    VkFormatFeatureFlags features)
+namespace
 {
-    for (const VkFormat candidate : candidates)
-    {
-        VkFormatProperties properties{};
-        vkGetPhysicalDeviceFormatProperties(physicalDevice, candidate, &properties);
-
-        const bool supportsFeatures = tiling == VK_IMAGE_TILING_LINEAR
-            ? (properties.linearTilingFeatures & features) == features
-            : (properties.optimalTilingFeatures & features) == features;
-
-        if (supportsFeatures)
-        {
-            return candidate;
-        }
-    }
-
-    throw std::runtime_error("Failed to find a supported Vulkan format");
-}
-
-SwapchainSupportDetails VulkanInstance::QuerySwapchainSupport(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
+SwapchainSupportDetails QuerySwapchainSupport(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
 {
     SwapchainSupportDetails details{};
 
@@ -69,7 +44,7 @@ SwapchainSupportDetails VulkanInstance::QuerySwapchainSupport(VkPhysicalDevice p
     return details;
 }
 
-VkSurfaceFormatKHR VulkanInstance::ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
+VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
 {
     for (const VkSurfaceFormatKHR& availableFormat : availableFormats)
     {
@@ -84,7 +59,7 @@ VkSurfaceFormatKHR VulkanInstance::ChooseSwapSurfaceFormat(const std::vector<VkS
     return availableFormats.front();
 }
 
-VkPresentModeKHR VulkanInstance::ChoosePresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
+VkPresentModeKHR ChoosePresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
 {
     for (const VkPresentModeKHR availablePresentMode : availablePresentModes)
     {
@@ -97,7 +72,7 @@ VkPresentModeKHR VulkanInstance::ChoosePresentMode(const std::vector<VkPresentMo
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D VulkanInstance::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D desiredExtent)
+VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D desiredExtent)
 {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
@@ -116,10 +91,14 @@ VkExtent2D VulkanInstance::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
 
     return actualExtent;
 }
+}
 
-void VulkanInstance::CreateSwapchain(const chimi::platform::Window& window)
+void CreateSwapchain(
+    VulkanSwapchain& swapchain,
+    const VulkanContext& context,
+    const chimi::platform::Window& window)
 {
-    const SwapchainSupportDetails swapchainSupport = QuerySwapchainSupport(m_physicalDevice, m_surface);
+    const SwapchainSupportDetails swapchainSupport = QuerySwapchainSupport(context.physicalDevice, context.surface);
 
     const VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapchainSupport.formats);
     const VkPresentModeKHR presentMode = ChoosePresentMode(swapchainSupport.presentModes);
@@ -136,7 +115,7 @@ void VulkanInstance::CreateSwapchain(const chimi::platform::Window& window)
 
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    createInfo.surface = m_surface;
+    createInfo.surface = context.surface;
     createInfo.minImageCount = imageCount;
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
@@ -145,11 +124,11 @@ void VulkanInstance::CreateSwapchain(const chimi::platform::Window& window)
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
     const uint32_t queueFamilyIndices[] = {
-        m_queueFamilyIndices.graphicsFamily.value(),
-        m_queueFamilyIndices.presentFamily.value()
+        context.queueFamilyIndices.graphicsFamily.value(),
+        context.queueFamilyIndices.presentFamily.value()
     };
 
-    if (m_queueFamilyIndices.graphicsFamily != m_queueFamilyIndices.presentFamily)
+    if (context.queueFamilyIndices.graphicsFamily != context.queueFamilyIndices.presentFamily)
     {
         createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         createInfo.queueFamilyIndexCount = 2;
@@ -166,28 +145,28 @@ void VulkanInstance::CreateSwapchain(const chimi::platform::Window& window)
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-    VK_CHECK(vkCreateSwapchainKHR(m_device, &createInfo, nullptr, &m_swapchain));
+    VK_CHECK(vkCreateSwapchainKHR(context.device, &createInfo, nullptr, &swapchain.handle));
 
-    VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, nullptr));
-    m_swapchainImages.resize(imageCount);
-    VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swapchain, &imageCount, m_swapchainImages.data()));
+    VK_CHECK(vkGetSwapchainImagesKHR(context.device, swapchain.handle, &imageCount, nullptr));
+    swapchain.images.resize(imageCount);
+    VK_CHECK(vkGetSwapchainImagesKHR(context.device, swapchain.handle, &imageCount, swapchain.images.data()));
 
-    m_swapchainImageFormat = surfaceFormat.format;
-    m_swapchainExtent = extent;
-    m_swapchainImageLayouts.assign(m_swapchainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
+    swapchain.imageFormat = surfaceFormat.format;
+    swapchain.extent = extent;
+    swapchain.imageLayouts.assign(swapchain.images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
 }
 
-void VulkanInstance::CreateSwapchainImageViews()
+void CreateSwapchainImageViews(VulkanSwapchain& swapchain, VkDevice device)
 {
-    m_swapchainImageViews.reserve(m_swapchainImages.size());
+    swapchain.imageViews.reserve(swapchain.images.size());
 
-    for (VkImage image : m_swapchainImages)
+    for (VkImage image : swapchain.images)
     {
         VkImageViewCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         createInfo.image = image;
         createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        createInfo.format = m_swapchainImageFormat;
+        createInfo.format = swapchain.imageFormat;
         createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
         createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
         createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -199,157 +178,145 @@ void VulkanInstance::CreateSwapchainImageViews()
         createInfo.subresourceRange.layerCount = 1;
 
         VkImageView imageView = VK_NULL_HANDLE;
-        VK_CHECK(vkCreateImageView(m_device, &createInfo, nullptr, &imageView));
-        m_swapchainImageViews.push_back(imageView);
+        VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &imageView));
+        swapchain.imageViews.push_back(imageView);
     }
 }
 
-void VulkanInstance::CreateDepthResources()
+void CreateDepthResources(
+    VulkanSwapchain& swapchain,
+    const VulkanContext& context,
+    const FindSupportedFormatFn& findSupportedFormat,
+    const SwapchainFindMemoryTypeFn& findMemoryType)
 {
-    m_depthFormat = FindDepthFormat();
+    swapchain.depthFormat = findSupportedFormat(
+        context.physicalDevice,
+        { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
     VkImageCreateInfo imageCreateInfo{};
     imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageCreateInfo.extent.width = m_swapchainExtent.width;
-    imageCreateInfo.extent.height = m_swapchainExtent.height;
+    imageCreateInfo.extent.width = swapchain.extent.width;
+    imageCreateInfo.extent.height = swapchain.extent.height;
     imageCreateInfo.extent.depth = 1;
     imageCreateInfo.mipLevels = 1;
     imageCreateInfo.arrayLayers = 1;
-    imageCreateInfo.format = m_depthFormat;
+    imageCreateInfo.format = swapchain.depthFormat;
     imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    VK_CHECK(vkCreateImage(m_device, &imageCreateInfo, nullptr, &m_depthImage.image));
+    VK_CHECK(vkCreateImage(context.device, &imageCreateInfo, nullptr, &swapchain.depthImage.image));
 
     VkMemoryRequirements memoryRequirements{};
-    vkGetImageMemoryRequirements(m_device, m_depthImage.image, &memoryRequirements);
+    vkGetImageMemoryRequirements(context.device, swapchain.depthImage.image, &memoryRequirements);
 
     VkMemoryAllocateInfo allocateInfo{};
     allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocateInfo.allocationSize = memoryRequirements.size;
-    allocateInfo.memoryTypeIndex = FindMemoryType(
+    allocateInfo.memoryTypeIndex = findMemoryType(
         memoryRequirements.memoryTypeBits,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    VK_CHECK(vkAllocateMemory(m_device, &allocateInfo, nullptr, &m_depthImage.memory));
-    VK_CHECK(vkBindImageMemory(m_device, m_depthImage.image, m_depthImage.memory, 0));
+    VK_CHECK(vkAllocateMemory(context.device, &allocateInfo, nullptr, &swapchain.depthImage.memory));
+    VK_CHECK(vkBindImageMemory(context.device, swapchain.depthImage.image, swapchain.depthImage.memory, 0));
 
     VkImageViewCreateInfo imageViewCreateInfo{};
     imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    imageViewCreateInfo.image = m_depthImage.image;
+    imageViewCreateInfo.image = swapchain.depthImage.image;
     imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    imageViewCreateInfo.format = m_depthFormat;
+    imageViewCreateInfo.format = swapchain.depthFormat;
     imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
     imageViewCreateInfo.subresourceRange.levelCount = 1;
     imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
     imageViewCreateInfo.subresourceRange.layerCount = 1;
-    VK_CHECK(vkCreateImageView(m_device, &imageViewCreateInfo, nullptr, &m_depthImage.imageView));
+    VK_CHECK(vkCreateImageView(context.device, &imageViewCreateInfo, nullptr, &swapchain.depthImage.imageView));
 
-    m_depthImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    swapchain.depthImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
 
-void VulkanInstance::CreateSwapchainSemaphores()
+void RebuildSwapchainResources(
+    VulkanSwapchain& swapchain,
+    const VulkanContext& context,
+    const chimi::platform::Window& window,
+    const FindSupportedFormatFn& findSupportedFormat,
+    const SwapchainFindMemoryTypeFn& findMemoryType)
+{
+    CleanupSwapchain(swapchain, context.device);
+    CreateSwapchain(swapchain, context, window);
+    CreateSwapchainImageViews(swapchain, context.device);
+    CreateDepthResources(swapchain, context, findSupportedFormat, findMemoryType);
+    DestroySwapchainSemaphores(swapchain, context.device);
+    CreateSwapchainSemaphores(swapchain, context.device);
+}
+
+void CreateSwapchainSemaphores(VulkanSwapchain& swapchain, VkDevice device)
 {
     VkSemaphoreCreateInfo semaphoreCreateInfo{};
     semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    m_renderFinishedSemaphores.resize(m_swapchainImages.size(), VK_NULL_HANDLE);
-    for (VkSemaphore& semaphore : m_renderFinishedSemaphores)
+    swapchain.renderFinishedSemaphores.resize(swapchain.images.size(), VK_NULL_HANDLE);
+    for (VkSemaphore& semaphore : swapchain.renderFinishedSemaphores)
     {
-        VK_CHECK(vkCreateSemaphore(m_device, &semaphoreCreateInfo, nullptr, &semaphore));
+        VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &semaphore));
     }
 }
 
-void VulkanInstance::DestroySwapchainSemaphores()
+void DestroySwapchainSemaphores(VulkanSwapchain& swapchain, VkDevice device)
 {
-    for (VkSemaphore semaphore : m_renderFinishedSemaphores)
+    for (VkSemaphore semaphore : swapchain.renderFinishedSemaphores)
     {
         if (semaphore != VK_NULL_HANDLE)
         {
-            vkDestroySemaphore(m_device, semaphore, nullptr);
+            vkDestroySemaphore(device, semaphore, nullptr);
         }
     }
 
-    m_renderFinishedSemaphores.clear();
+    swapchain.renderFinishedSemaphores.clear();
 }
 
-void VulkanInstance::CleanupSwapchain()
+void CleanupSwapchain(VulkanSwapchain& swapchain, VkDevice device)
 {
-    if (m_depthImage.imageView != VK_NULL_HANDLE)
+    if (swapchain.depthImage.imageView != VK_NULL_HANDLE)
     {
-        vkDestroyImageView(m_device, m_depthImage.imageView, nullptr);
-        m_depthImage.imageView = VK_NULL_HANDLE;
+        vkDestroyImageView(device, swapchain.depthImage.imageView, nullptr);
+        swapchain.depthImage.imageView = VK_NULL_HANDLE;
     }
 
-    if (m_depthImage.image != VK_NULL_HANDLE)
+    if (swapchain.depthImage.image != VK_NULL_HANDLE)
     {
-        vkDestroyImage(m_device, m_depthImage.image, nullptr);
-        m_depthImage.image = VK_NULL_HANDLE;
+        vkDestroyImage(device, swapchain.depthImage.image, nullptr);
+        swapchain.depthImage.image = VK_NULL_HANDLE;
     }
 
-    if (m_depthImage.memory != VK_NULL_HANDLE)
+    if (swapchain.depthImage.memory != VK_NULL_HANDLE)
     {
-        vkFreeMemory(m_device, m_depthImage.memory, nullptr);
-        m_depthImage.memory = VK_NULL_HANDLE;
+        vkFreeMemory(device, swapchain.depthImage.memory, nullptr);
+        swapchain.depthImage.memory = VK_NULL_HANDLE;
     }
 
-    for (VkImageView imageView : m_swapchainImageViews)
+    for (VkImageView imageView : swapchain.imageViews)
     {
-        vkDestroyImageView(m_device, imageView, nullptr);
+        vkDestroyImageView(device, imageView, nullptr);
     }
 
-    m_swapchainImageViews.clear();
-    m_swapchainImages.clear();
-    m_swapchainImageLayouts.clear();
+    swapchain.imageViews.clear();
+    swapchain.images.clear();
+    swapchain.imageLayouts.clear();
 
-    if (m_swapchain != VK_NULL_HANDLE)
+    if (swapchain.handle != VK_NULL_HANDLE)
     {
-        vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
-        m_swapchain = VK_NULL_HANDLE;
+        vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
+        swapchain.handle = VK_NULL_HANDLE;
     }
 
-    m_swapchainImageFormat = VK_FORMAT_UNDEFINED;
-    m_swapchainExtent = {};
-    m_depthFormat = VK_FORMAT_UNDEFINED;
-    m_depthImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-}
-
-void VulkanInstance::RecreateSwapchain()
-{
-    CHIMI_ASSERT(m_window != nullptr, "Window must be available to recreate the swapchain");
-
-    VkExtent2D extent = m_window->GetFramebufferExtent();
-    while (extent.width == 0 || extent.height == 0)
-    {
-        const_cast<chimi::platform::Window*>(m_window)->PollEvents();
-        extent = m_window->GetFramebufferExtent();
-    }
-
-    VK_CHECK(vkDeviceWaitIdle(m_device));
-    CleanupSwapchain();
-    CreateSwapchain(*m_window);
-    CreateSwapchainImageViews();
-    CreateDepthResources();
-    DestroySwapchainSemaphores();
-    CreateSwapchainSemaphores();
-    DestroyGraphicsPipeline();
-    if (m_meshPipelineState.valid)
-    {
-        const chimi::renderer::MeshPassPipelineConfig pipelineConfig = m_meshPipelineState.config;
-        CreateGraphicsPipeline(pipelineConfig);
-        m_meshPipelineState.config = pipelineConfig;
-        m_meshPipelineState.valid = true;
-    }
-
-    spdlog::info(
-        "Recreated swapchain | images={} format={} extent={}x{}",
-        m_swapchainImages.size(),
-        static_cast<int>(m_swapchainImageFormat),
-        m_swapchainExtent.width,
-        m_swapchainExtent.height);
+    swapchain.imageFormat = VK_FORMAT_UNDEFINED;
+    swapchain.extent = {};
+    swapchain.depthFormat = VK_FORMAT_UNDEFINED;
+    swapchain.depthImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
 }

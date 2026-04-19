@@ -30,13 +30,15 @@ struct MeshDrawPacket
     uint64_t meshId = 0;
     const CpuMeshData* meshData = nullptr;
     glm::mat4 objectToClip{ 1.0f };
+    glm::vec4 lightDirectionAndIntensity{ -0.6f, -1.0f, -0.35f, 1.0f };
+    glm::vec4 lightColorAndAmbient{ 1.0f, 0.98f, 0.92f, 0.18f };
 };
 
 struct MeshPassPipelineConfig
 {
     MeshPassPipelineKind pipelineKind = MeshPassPipelineKind::SolidColor;
     MeshCullMode cullMode = MeshCullMode::Back;
-    MeshFrontFace frontFace = MeshFrontFace::Clockwise;
+    MeshFrontFace frontFace = MeshFrontFace::CounterClockwise;
     bool depthTestEnabled = true;
     bool depthWriteEnabled = true;
 };

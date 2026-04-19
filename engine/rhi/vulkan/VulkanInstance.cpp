@@ -2,7 +2,10 @@
 
 #include "core/Assert.h"
 #include "platform/Window.h"
+#include "rhi/vulkan/VulkanFrameRecording.h"
+#include "rhi/vulkan/VulkanMeshPipeline.h"
 
+#include <stdexcept>
 #include <vector>
 
 #include <GLFW/glfw3.h>
@@ -12,63 +15,43 @@
 
 namespace chimi::rhi::vulkan
 {
-namespace
-{
-constexpr const char* kApplicationName = "ChimiEngineSandbox";
-constexpr const char* kEngineName = "ChimiEngine";
-}
-
-bool QueueFamilyIndices::IsComplete() const
-{
-    return graphicsFamily.has_value() && presentFamily.has_value();
-}
-
 VulkanInstance::VulkanInstance(const chimi::platform::Window& window)
     : m_window(&window)
 {
     VK_CHECK(volkInitialize());
+    chimi::rhi::vulkan::CreateInstance(m_context);
+    volkLoadInstance(m_context.instance);
 
-    VkApplicationInfo appInfo{};
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = kApplicationName;
-    appInfo.applicationVersion = VK_MAKE_API_VERSION(0, 0, 1, 0);
-    appInfo.pEngineName = kEngineName;
-    appInfo.engineVersion = VK_MAKE_API_VERSION(0, 0, 1, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_3;
-
-    const auto extensions = BuildRequiredExtensions();
-    const auto validationLayers = BuildValidationLayers();
-
-    VkInstanceCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    createInfo.pApplicationInfo = &appInfo;
-    createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-    createInfo.ppEnabledLayerNames = validationLayers.empty() ? nullptr : validationLayers.data();
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    createInfo.ppEnabledExtensionNames = extensions.data();
-
-    VK_CHECK(vkCreateInstance(&createInfo, nullptr, &m_instance));
-    volkLoadInstance(m_instance);
-
-    m_surface = window.CreateVulkanSurface(m_instance);
+    chimi::rhi::vulkan::CreateSurface(m_context, window);
     spdlog::info("Created Vulkan surface");
 
-    PickPhysicalDevice();
-    CreateLogicalDevice();
-    CreateUploadContext();
-    CreateSwapchain(window);
-    CreateSwapchainImageViews();
-    CreateDepthResources();
-    CreateFrameContexts();
-    CreateSwapchainSemaphores();
+    chimi::rhi::vulkan::PickPhysicalDevice(m_context);
+    chimi::rhi::vulkan::CreateLogicalDevice(m_context);
+    chimi::rhi::vulkan::CreateUploadContext(m_upload, m_context);
+    chimi::rhi::vulkan::CreateSwapchain(m_swapchain, m_context, window);
+    chimi::rhi::vulkan::CreateSwapchainImageViews(m_swapchain, m_context.device);
+    chimi::rhi::vulkan::CreateDepthResources(
+        m_swapchain,
+        m_context,
+        chimi::rhi::vulkan::FindSupportedFormat,
+        [this](uint32_t typeFilter, VkMemoryPropertyFlags properties)
+        {
+            return chimi::rhi::vulkan::FindMemoryType(m_context.physicalDevice, typeFilter, properties);
+        });
+    chimi::rhi::vulkan::CreateFrameContexts(
+        m_frameContexts,
+        m_context.device,
+        m_context.queueFamilyIndices.graphicsFamily.value(),
+        kFramesInFlight);
+    chimi::rhi::vulkan::CreateSwapchainSemaphores(m_swapchain, m_context.device);
 
     uint32_t physicalDeviceCount = 0;
-    VK_CHECK(vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, nullptr));
+    VK_CHECK(vkEnumeratePhysicalDevices(m_context.instance, &physicalDeviceCount, nullptr));
 
     std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
     if (physicalDeviceCount > 0)
     {
-        VK_CHECK(vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, physicalDevices.data()));
+        VK_CHECK(vkEnumeratePhysicalDevices(m_context.instance, &physicalDeviceCount, physicalDevices.data()));
     }
 
     spdlog::info("Created Vulkan instance");
@@ -98,80 +81,83 @@ VulkanInstance::VulkanInstance(const chimi::platform::Window& window)
 
     spdlog::info(
         "Selected queue families | graphics={} present={}",
-        m_queueFamilyIndices.graphicsFamily.value(),
-        m_queueFamilyIndices.presentFamily.value());
+        m_context.queueFamilyIndices.graphicsFamily.value(),
+        m_context.queueFamilyIndices.presentFamily.value());
     spdlog::info(
         "Created swapchain | images={} format={} extent={}x{}",
-        m_swapchainImages.size(),
-        static_cast<int>(m_swapchainImageFormat),
-        m_swapchainExtent.width,
-        m_swapchainExtent.height);
+        m_swapchain.images.size(),
+        static_cast<int>(m_swapchain.imageFormat),
+        m_swapchain.extent.width,
+        m_swapchain.extent.height);
 }
 
 VulkanInstance::~VulkanInstance()
 {
-    if (m_device != VK_NULL_HANDLE)
+    if (m_context.device != VK_NULL_HANDLE)
     {
-        vkDeviceWaitIdle(m_device);
+        vkDeviceWaitIdle(m_context.device);
     }
 
-    DestroyFrameContexts();
-    DestroySwapchainSemaphores();
-    DestroyGraphicsPipeline();
-    DestroySampleGeometryResources();
-    CleanupSwapchain();
-    DestroyUploadContext();
-
-    if (m_device != VK_NULL_HANDLE)
+    chimi::rhi::vulkan::DestroyFrameContexts(m_frameContexts, m_context.device);
+    chimi::rhi::vulkan::DestroySwapchainSemaphores(m_swapchain, m_context.device);
+    DestroyMeshPass(m_meshPass, m_context.device);
+    DestroyMeshCache(m_meshCache, [this](MeshBuffer& meshBuffer)
     {
-        vkDestroyDevice(m_device, nullptr);
-        m_device = VK_NULL_HANDLE;
-    }
-
-    if (m_surface != VK_NULL_HANDLE)
-    {
-        vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
-        m_surface = VK_NULL_HANDLE;
-    }
-
-    if (m_instance != VK_NULL_HANDLE)
-    {
-        vkDestroyInstance(m_instance, nullptr);
-        m_instance = VK_NULL_HANDLE;
-    }
+        chimi::rhi::vulkan::DestroyMeshBuffer(m_context.device, meshBuffer);
+    });
+    chimi::rhi::vulkan::CleanupSwapchain(m_swapchain, m_context.device);
+    chimi::rhi::vulkan::DestroyUploadContext(m_upload, m_context.device);
+    chimi::rhi::vulkan::DestroyContext(m_context);
 }
 
-VkInstance VulkanInstance::GetHandle() const { return m_instance; }
-VkSurfaceKHR VulkanInstance::GetSurface() const { return m_surface; }
-VkPhysicalDevice VulkanInstance::GetPhysicalDevice() const { return m_physicalDevice; }
-VkDevice VulkanInstance::GetDevice() const { return m_device; }
-VkQueue VulkanInstance::GetGraphicsQueue() const { return m_graphicsQueue; }
-VkQueue VulkanInstance::GetPresentQueue() const { return m_presentQueue; }
-const QueueFamilyIndices& VulkanInstance::GetQueueFamilyIndices() const { return m_queueFamilyIndices; }
-VkSwapchainKHR VulkanInstance::GetSwapchain() const { return m_swapchain; }
-VkFormat VulkanInstance::GetSwapchainImageFormat() const { return m_swapchainImageFormat; }
-VkExtent2D VulkanInstance::GetSwapchainExtent() const { return m_swapchainExtent; }
-const std::vector<VkImage>& VulkanInstance::GetSwapchainImages() const { return m_swapchainImages; }
-const std::vector<VkImageView>& VulkanInstance::GetSwapchainImageViews() const { return m_swapchainImageViews; }
+VkInstance VulkanInstance::GetHandle() const { return m_context.instance; }
+VkSurfaceKHR VulkanInstance::GetSurface() const { return m_context.surface; }
+VkPhysicalDevice VulkanInstance::GetPhysicalDevice() const { return m_context.physicalDevice; }
+VkDevice VulkanInstance::GetDevice() const { return m_context.device; }
+VkQueue VulkanInstance::GetGraphicsQueue() const { return m_context.graphicsQueue; }
+VkQueue VulkanInstance::GetPresentQueue() const { return m_context.presentQueue; }
+const QueueFamilyIndices& VulkanInstance::GetQueueFamilyIndices() const { return m_context.queueFamilyIndices; }
+VkSwapchainKHR VulkanInstance::GetSwapchain() const { return m_swapchain.handle; }
+VkFormat VulkanInstance::GetSwapchainImageFormat() const { return m_swapchain.imageFormat; }
+VkExtent2D VulkanInstance::GetSwapchainExtent() const { return m_swapchain.extent; }
+const std::vector<VkImage>& VulkanInstance::GetSwapchainImages() const { return m_swapchain.images; }
+const std::vector<VkImageView>& VulkanInstance::GetSwapchainImageViews() const { return m_swapchain.imageViews; }
 
 void VulkanInstance::DrawFrame(const chimi::renderer::RenderPacket& renderPacket)
 {
-    SyncGraphicsPipeline(renderPacket);
-    SyncMeshResources(renderPacket);
-    const PreparedMeshPass preparedMeshPass = BuildPreparedMeshPass(renderPacket);
-    FrameContext& frame = GetCurrentFrame();
+    SyncMeshPassPipeline(
+        m_meshPass,
+        m_context.device,
+        m_swapchain.imageFormat,
+        m_swapchain.depthFormat,
+        renderPacket.mainMeshPass.pipeline);
+    SyncMeshCache(
+        m_meshCache,
+        renderPacket.mainMeshPass,
+        [this](const chimi::renderer::CpuMeshData& meshData) -> MeshBuffer
+        {
+            return chimi::rhi::vulkan::CreateMeshBuffer(
+                m_context,
+                m_upload,
+                meshData,
+                [this](uint32_t typeFilter, VkMemoryPropertyFlags properties)
+                {
+                    return chimi::rhi::vulkan::FindMemoryType(m_context.physicalDevice, typeFilter, properties);
+                });
+        },
+        [this](MeshBuffer& meshBuffer)
+        {
+            chimi::rhi::vulkan::DestroyMeshBuffer(m_context.device, meshBuffer);
+        });
+    const PreparedMeshPass preparedMeshPass = BuildPreparedMeshPass(renderPacket, m_meshCache);
+    FrameContext& frame = chimi::rhi::vulkan::GetCurrentFrame(m_frameContexts, m_currentFrameIndex);
 
-    VK_CHECK(vkWaitForFences(m_device, 1, &frame.inFlightFence, VK_TRUE, UINT64_MAX));
-    VK_CHECK(vkResetFences(m_device, 1, &frame.inFlightFence));
+    WaitForFrame(frame, m_context.device);
 
-    uint32_t imageIndex = 0;
-    const VkResult acquireResult = vkAcquireNextImageKHR(
-        m_device,
-        m_swapchain,
-        UINT64_MAX,
-        frame.imageAvailableSemaphore,
-        VK_NULL_HANDLE,
-        &imageIndex);
+    const AcquireFrameResult acquireFrameResult =
+        AcquireFrameImage(m_context.device, m_swapchain.handle, frame);
+    const VkResult acquireResult = acquireFrameResult.result;
+    const uint32_t imageIndex = acquireFrameResult.imageIndex;
 
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -183,33 +169,18 @@ void VulkanInstance::DrawFrame(const chimi::renderer::RenderPacket& renderPacket
         acquireResult == VK_SUCCESS || acquireResult == VK_SUBOPTIMAL_KHR,
         "Failed to acquire the next swapchain image");
 
-    VK_CHECK(vkResetCommandPool(m_device, frame.commandPool, 0));
-    RecordFrameCommandBuffer(frame, imageIndex, preparedMeshPass);
+    ResetFrameCommandPool(m_context.device, frame);
+    chimi::rhi::vulkan::RecordFrameCommandBuffer(
+        frame,
+        imageIndex,
+        m_swapchain,
+        m_meshPass,
+        preparedMeshPass);
 
-    const VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    const VkSemaphore renderFinishedSemaphore = m_renderFinishedSemaphores[imageIndex];
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &frame.imageAvailableSemaphore;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &frame.commandBuffer;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
-
-    VK_CHECK(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, frame.inFlightFence));
-
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &renderFinishedSemaphore;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &m_swapchain;
-    presentInfo.pImageIndices = &imageIndex;
-
-    const VkResult presentResult = vkQueuePresentKHR(m_presentQueue, &presentInfo);
+    const VkSemaphore renderFinishedSemaphore = m_swapchain.renderFinishedSemaphores[imageIndex];
+    SubmitFrame(m_context.graphicsQueue, frame, renderFinishedSemaphore);
+    const VkResult presentResult =
+        PresentFrame(m_context.presentQueue, m_swapchain.handle, imageIndex, renderFinishedSemaphore);
     CHIMI_ASSERT(
         presentResult == VK_SUCCESS
             || presentResult == VK_SUBOPTIMAL_KHR
@@ -221,8 +192,8 @@ void VulkanInstance::DrawFrame(const chimi::renderer::RenderPacket& renderPacket
         HandleResize();
     }
 
-    VK_CHECK(vkQueueWaitIdle(m_presentQueue));
-    m_currentFrameIndex = (m_currentFrameIndex + 1) % kFramesInFlight;
+    VK_CHECK(vkQueueWaitIdle(m_context.presentQueue));
+    m_currentFrameIndex = AdvanceFrameIndex(m_currentFrameIndex, kFramesInFlight);
 }
 
 void VulkanInstance::HandleResize()
@@ -230,47 +201,47 @@ void VulkanInstance::HandleResize()
     RecreateSwapchain();
 }
 
-std::vector<const char*> VulkanInstance::BuildRequiredExtensions()
+void VulkanInstance::RecreateSwapchain()
 {
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-    CHIMI_ASSERT(glfwExtensions != nullptr, "Failed to query required GLFW Vulkan extensions");
+    CHIMI_ASSERT(m_window != nullptr, "Window must be available to recreate the swapchain");
 
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-    if (ValidationEnabled())
+    VkExtent2D extent = m_window->GetFramebufferExtent();
+    while (extent.width == 0 || extent.height == 0)
     {
-        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        const_cast<chimi::platform::Window*>(m_window)->PollEvents();
+        extent = m_window->GetFramebufferExtent();
     }
 
-    return extensions;
-}
+    VK_CHECK(vkDeviceWaitIdle(m_context.device));
+    chimi::rhi::vulkan::RebuildSwapchainResources(
+        m_swapchain,
+        m_context,
+        *m_window,
+        chimi::rhi::vulkan::FindSupportedFormat,
+        [this](uint32_t typeFilter, VkMemoryPropertyFlags properties)
+        {
+            return chimi::rhi::vulkan::FindMemoryType(m_context.physicalDevice, typeFilter, properties);
+        });
 
-std::vector<const char*> VulkanInstance::BuildValidationLayers()
-{
-    if (!ValidationEnabled())
+    const bool rebuildMeshPass = m_meshPass.pipelineState.valid;
+    const chimi::renderer::MeshPassPipelineConfig pipelineConfig = m_meshPass.pipelineState.config;
+    DestroyMeshPass(m_meshPass, m_context.device);
+    if (rebuildMeshPass)
     {
-        return {};
+        SyncMeshPassPipeline(
+            m_meshPass,
+            m_context.device,
+            m_swapchain.imageFormat,
+            m_swapchain.depthFormat,
+            pipelineConfig);
     }
 
-    return { "VK_LAYER_KHRONOS_validation" };
+    spdlog::info(
+        "Recreated swapchain | images={} format={} extent={}x{}",
+        m_swapchain.images.size(),
+        static_cast<int>(m_swapchain.imageFormat),
+        m_swapchain.extent.width,
+        m_swapchain.extent.height);
 }
 
-bool VulkanInstance::ValidationEnabled()
-{
-#if defined(NDEBUG)
-    return false;
-#else
-#if CHIMI_ENABLE_VALIDATION
-    return true;
-#else
-    return false;
-#endif
-#endif
-}
-
-FrameContext& VulkanInstance::GetCurrentFrame()
-{
-    return m_frameContexts[m_currentFrameIndex];
-}
 }

@@ -2,12 +2,21 @@ add_library(ChimiEngine
     core/Assert.cpp
     core/Log.cpp
     platform/Window.cpp
+    renderer/MeshLibrary.cpp
     renderer/Renderer.cpp
+    renderer/SceneExtraction.cpp
+    scene/Scene.cpp
     rhi/vulkan/VulkanInstance.cpp
-    rhi/vulkan/VulkanInstance.Device.cpp
-    rhi/vulkan/VulkanInstance.Buffer.cpp
-    rhi/vulkan/VulkanInstance.Swapchain.cpp
-    rhi/vulkan/VulkanInstance.Geometry.cpp
+    rhi/vulkan/VulkanContext.cpp
+    rhi/vulkan/VulkanMeshBuffer.cpp
+    rhi/vulkan/VulkanMeshCache.cpp
+    rhi/vulkan/VulkanMeshPass.cpp
+    rhi/vulkan/VulkanMeshPipeline.cpp
+    rhi/vulkan/VulkanFrameContext.cpp
+    rhi/vulkan/VulkanFrameRecording.cpp
+    rhi/vulkan/VulkanSwapchain.cpp
+    rhi/vulkan/VulkanShaderLoader.cpp
+    rhi/vulkan/VulkanUploadContext.cpp
 )
 
 target_include_directories(ChimiEngine

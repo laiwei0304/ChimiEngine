@@ -1,24 +1,19 @@
 #pragma once
 
-#include "renderer/MeshData.h"
+#include "renderer/MeshLibrary.h"
 #include "renderer/RenderPacket.h"
+#include "scene/Scene.h"
 
 namespace chimi::renderer
 {
-struct CameraData
-{
-    glm::mat4 viewProjection{ 1.0f };
-};
-
 class Renderer
 {
 public:
-    Renderer();
+    explicit Renderer(const MeshLibrary& meshLibrary);
 
-    RenderPacket BuildRenderPacket() const;
+    RenderPacket BuildRenderPacket(const chimi::scene::Scene& scene) const;
 
 private:
-    CpuMeshData m_sampleMeshData{};
-    CameraData m_cameraData{};
+    const MeshLibrary* m_meshLibrary = nullptr;
 };
 }

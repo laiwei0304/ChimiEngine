@@ -27,6 +27,9 @@ add_custom_target(ChimiEngineShaders
 
 add_executable(ChimiEngineSandbox
     src/main.cpp
+    src/SandboxMeshes.cpp
+    src/SandboxScene.cpp
+    src/SandboxSceneController.cpp
 )
 
 add_dependencies(ChimiEngineSandbox ChimiEngineShaders)
