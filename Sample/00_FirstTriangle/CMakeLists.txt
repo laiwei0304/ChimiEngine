@@ -1,4 +1,4 @@
-set(CHIMI_00_FIRST_TRIANGLE_SHADER_SOURCES
+﻿set(CHIMI_00_FIRST_TRIANGLE_SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/Resource/Shader/00_hello_triangle.vert
     ${CMAKE_SOURCE_DIR}/Resource/Shader/00_hello_triangle.frag
 )

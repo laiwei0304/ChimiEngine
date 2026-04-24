@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CmTexture.h"
 #include "CmSampler.h"

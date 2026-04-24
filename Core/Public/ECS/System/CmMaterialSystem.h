@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "CmGraphicContext.h"
 #include "Graphic/CmVKCommon.h"
 #include "ECS/CmSystem.h"

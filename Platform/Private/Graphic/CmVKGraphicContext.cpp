@@ -1,10 +1,12 @@
-#include "Graphic/CmVKGraphicContext.h"
+﻿#include "Graphic/CmVKGraphicContext.h"
 #include "Window/CmGLFWwindow.h"
 #include <iostream>
 
 namespace chimi
 {
-const DeviceFeature requestedLayers[] = {
+    static constexpr bool kShouldValidate = CHIMI_ENABLE_VALIDATION != 0;
+
+    const DeviceFeature requestedLayers[] = {
             { "VK_LAYER_KHRONOS_validation", true },
     };
     const DeviceFeature requestedExtensions[] = {
@@ -16,17 +18,15 @@ const DeviceFeature requestedLayers[] = {
 #elif CHIMI_ENGINE_PLATFORM_LINUX
             { VK_KHR_XCB_SURFACE_EXTENSION_NAME, true },
 #endif
-	    { VK_EXT_DEBUG_REPORT_EXTENSION_NAME, true},
+#if CHIMI_ENABLE_VALIDATION
+            { VK_EXT_DEBUG_REPORT_EXTENSION_NAME, true },
+#endif
     };
 
     CmVKGraphicContext::CmVKGraphicContext(CmWindow *window) {
-        std::cout << "VK Step: volkInitialize" << std::endl;
         CALL_VK(volkInitialize());
-        std::cout << "VK Step: CreateInstance" << std::endl;
         CreateInstance();
-        std::cout << "VK Step: CreateSurface" << std::endl;
         CreateSurface(window);
-        std::cout << "VK Step: SelectPhyDevice" << std::endl;
         SelectPhyDevice();
     }
 
@@ -53,8 +53,7 @@ const DeviceFeature requestedLayers[] = {
     }
 
     void CmVKGraphicContext::CreateInstance() {
-        std::cout << "VK Step: enumerate instance layers" << std::endl;
-        // 1. 构建layers
+        // 1. 构建 Layers
         uint32_t availableLayerCount;
         CALL_VK(vkEnumerateInstanceLayerProperties(&availableLayerCount, nullptr));
         std::vector<VkLayerProperties> availableLayers(availableLayerCount);
@@ -62,15 +61,14 @@ const DeviceFeature requestedLayers[] = {
 
         uint32_t enableLayerCount = 0;
         const char *enableLayers[32];
-        if(bShouldValidate){
+        if constexpr(kShouldValidate){
             if(!checkDeviceFeatures("Instance Layers", false, availableLayerCount, availableLayers.data(),
                                    ARRAY_SIZE(requestedLayers), requestedLayers, &enableLayerCount, enableLayers)){
                 return;
             }
         }
 
-        std::cout << "VK Step: enumerate instance extensions" << std::endl;
-        // 2. 构建extension
+        // 2. 构建 Extension
         uint32_t availableExtensionCount;
         CALL_VK(vkEnumerateInstanceExtensionProperties("", &availableExtensionCount, nullptr));
         std::vector<VkExtensionProperties> availableExtensions(availableExtensionCount);
@@ -123,7 +121,7 @@ const DeviceFeature requestedLayers[] = {
         // 3. create instance
         VkInstanceCreateInfo instanceInfo = {
                 .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-                .pNext = bShouldValidate ? &debugReportCallbackInfoExt : nullptr,
+                .pNext = kShouldValidate ? &debugReportCallbackInfoExt : nullptr,
                 .flags = 0,
                 .pApplicationInfo = &applicationInfo,
                 .enabledLayerCount = enableLayerCount,
@@ -131,7 +129,6 @@ const DeviceFeature requestedLayers[] = {
                 .enabledExtensionCount = enableExtensionCount,
                 .ppEnabledExtensionNames = enableExtensionCount > 0 ? enableExtensions : nullptr
         };
-        std::cout << "VK Step: create instance handle" << std::endl;
         CALL_VK(vkCreateInstance(&instanceInfo, nullptr, &mInstance));
         volkLoadInstance(mInstance);
         LOG_T("{0} : instance : {1}", __FUNCTION__, (void*)mInstance);

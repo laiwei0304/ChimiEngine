@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CmGraphicContext.h"
 #include "CmVKCommon.h"
@@ -30,7 +30,6 @@ namespace chimi
         void CreateSurface(CmWindow *window);
         void SelectPhyDevice();
 
-        bool bShouldValidate = true;
         VkInstance mInstance;
         VkSurfaceKHR mSurface;
 

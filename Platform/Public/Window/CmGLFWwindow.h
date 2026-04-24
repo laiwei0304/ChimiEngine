@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CmWindow.h"
 #include <GLFW/glfw3.h>
