@@ -4,44 +4,42 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
 FetchContent_Declare(
     glfw
-    GIT_REPOSITORY https://github.com/glfw/glfw.git
-    GIT_TAG 3.4
+    URL https://github.com/glfw/glfw/archive/refs/tags/3.4.zip
 )
 
 FetchContent_Declare(
     glm
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG 1.0.1
+    URL https://github.com/g-truc/glm/archive/refs/tags/1.0.1.zip
 )
 
 FetchContent_Declare(
     spdlog
-    GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG v1.14.1
+    URL https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.zip
 )
 
 FetchContent_Declare(
     volk
-    GIT_REPOSITORY https://github.com/zeux/volk.git
-    GIT_TAG 1.4.304
+    URL https://github.com/zeux/volk/archive/refs/tags/1.4.304.zip
 )
 
 FetchContent_Declare(
     vma
-    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-    GIT_TAG v3.2.1
+    URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.2.1.zip
 )
 
 FetchContent_Declare(
     tinygltf
-    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
-    GIT_TAG v2.9.7
+    URL https://github.com/syoyo/tinygltf/archive/refs/tags/v2.9.7.zip
 )
 
 FetchContent_Declare(
     entt
-    GIT_REPOSITORY https://github.com/skypjack/entt.git
-    GIT_TAG v3.15.0
+    URL https://github.com/skypjack/entt/archive/refs/tags/v3.15.0.zip
+)
+
+FetchContent_Declare(
+    stb
+    URL https://github.com/nothings/stb/archive/31c1ad37456438565541f4919958214b6e762fb4.zip
 )
 
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -62,13 +60,18 @@ set(TINYGLTF_HEADER_ONLY ON CACHE BOOL "" FORCE)
 set(TINYGLTF_INSTALL OFF CACHE BOOL "" FORCE)
 set(TINYGLTF_INSTALL_VENDOR OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(glfw glm spdlog volk vma tinygltf entt)
+FetchContent_MakeAvailable(glfw glm spdlog volk vma tinygltf entt stb)
 
 set(CHIMI_TINYGLTF_INCLUDE_DIR "${tinygltf_SOURCE_DIR}" CACHE INTERNAL "")
 
 if (NOT TARGET chimi_entt)
     add_library(chimi_entt INTERFACE)
     target_include_directories(chimi_entt INTERFACE "${entt_SOURCE_DIR}/src")
+endif()
+
+if (NOT TARGET chimi_stb)
+    add_library(chimi_stb INTERFACE)
+    target_include_directories(chimi_stb INTERFACE "${stb_SOURCE_DIR}")
 endif()
 
 if (TARGET volk)

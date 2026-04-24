@@ -26,14 +26,13 @@ target_include_directories(chimi_platform
         ${CMAKE_CURRENT_SOURCE_DIR}/Private
 )
 
-target_include_directories(chimi_platform PUBLIC External)
-
 target_link_libraries(chimi_platform
     PUBLIC
         glfw
         glm::glm
         spdlog::spdlog
         volk
+        chimi_stb
 )
 
 if (DEFINED CHIMI_VMA_TARGET)
