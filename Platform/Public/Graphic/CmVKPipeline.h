@@ -1,0 +1,125 @@
+#pragma once
+
+#include "Graphic/CmVKCommon.h"
+
+namespace chimi
+{
+    class CmVKDevice;
+    class CmVKRenderPass;
+
+    struct ShaderLayout{
+        std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+        std::vector<VkPushConstantRange> pushConstants;
+    };
+
+    struct PipelineVertexInputState{
+        std::vector<VkVertexInputBindingDescription> vertexBindings;
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+    };
+
+    struct PipelineInputAssemblyState{
+        VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkBool32 primitiveRestartEnable = VK_FALSE;
+    };
+
+    struct PipelineRasterizationState{
+        VkBool32 depthClampEnable = VK_FALSE;
+        VkBool32 rasterizerDiscardEnable = VK_FALSE;
+        VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
+        VkCullModeFlags cullMode = VK_CULL_MODE_NONE;
+        VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        VkBool32 depthBiasEnable = VK_FALSE;
+        float depthBiasConstantFactor = 0;
+        float depthBiasClamp = 0;
+        float depthBiasSlopeFactor = 0;
+        float lineWidth = 1.f;
+    };
+
+    struct PipelineMultisampleState{
+        VkSampleCountFlagBits rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkBool32 sampleShadingEnable = VK_FALSE;
+        float minSampleShading = 0.2f;
+    };
+
+    struct PipelineDepthStencilState{
+        VkBool32 depthTestEnable = VK_FALSE;
+        VkBool32 depthWriteEnable = VK_FALSE;
+        VkCompareOp depthCompareOp = VK_COMPARE_OP_NEVER;
+        VkBool32 depthBoundsTestEnable = VK_FALSE;
+        VkBool32 stencilTestEnable = VK_FALSE;
+    };
+
+    struct PipelineDynamicState{
+        std::vector<VkDynamicState> dynamicStates;
+    };
+
+    struct PipelineConfig{
+        PipelineVertexInputState vertexInputState;
+        PipelineInputAssemblyState inputAssemblyState;
+        PipelineRasterizationState rasterizationState;
+        PipelineMultisampleState multisampleState;
+        PipelineDepthStencilState depthStencilState;
+        VkPipelineColorBlendAttachmentState colorBlendAttachmentState{
+                .blendEnable = VK_FALSE,
+                .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+                .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+                .colorBlendOp = VK_BLEND_OP_ADD,
+                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+                .alphaBlendOp = VK_BLEND_OP_ADD,
+                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT
+                                  | VK_COLOR_COMPONENT_G_BIT
+                                  | VK_COLOR_COMPONENT_B_BIT
+                                  | VK_COLOR_COMPONENT_A_BIT
+        };
+        PipelineDynamicState dynamicState;
+    };
+
+    class CmVKPipelineLayout{
+    public:
+        CmVKPipelineLayout(CmVKDevice *device, const std::string &vertexShaderFile, const std::string &fragShaderFile, const ShaderLayout &shaderLayout = {});
+        ~CmVKPipelineLayout();
+
+        VkPipelineLayout GetHandle() const { return mHandle; }
+        VkShaderModule GetVertexShaderModule() const { return mVertexShaderModule; }
+        VkShaderModule GetFragShaderModule() const { return mFragShaderModule; }
+    private:
+        VkResult CreateShaderModule(const std::string &filePath, VkShaderModule *outShaderModule);
+
+        VkPipelineLayout mHandle = VK_NULL_HANDLE;
+
+        VkShaderModule mVertexShaderModule = VK_NULL_HANDLE;
+        VkShaderModule mFragShaderModule = VK_NULL_HANDLE;
+        CmVKDevice *mDevice;
+    };
+
+    class CmVKPipeline{
+    public:
+        CmVKPipeline(CmVKDevice *device, CmVKRenderPass *renderPass, CmVKPipelineLayout *pipelineLayout);
+        ~CmVKPipeline();
+        void Create();
+
+        void Bind(VkCommandBuffer cmdBuffer);
+
+        CmVKPipeline *SetVertexInputState(const std::vector<VkVertexInputBindingDescription> &vertexBindings, const std::vector<VkVertexInputAttributeDescription> &vertexAttrs);
+        CmVKPipeline *SetInputAssemblyState(VkPrimitiveTopology topology, VkBool32 primitiveRestartEnable = VK_FALSE);
+        CmVKPipeline *SetRasterizationState(const PipelineRasterizationState &rasterizationState);
+        CmVKPipeline *SetMultisampleState(VkSampleCountFlagBits samples, VkBool32 sampleShadingEnable, float minSampleShading = 0.f);
+        CmVKPipeline *SetDepthStencilState(const PipelineDepthStencilState &depthStencilState);
+        CmVKPipeline *SetColorBlendAttachmentState(VkBool32 blendEnable,
+                                                   VkBlendFactor srcColorBlendFactor = VK_BLEND_FACTOR_ONE, VkBlendFactor dstColorBlendFactor = VK_BLEND_FACTOR_ZERO, VkBlendOp colorBlendOp = VK_BLEND_OP_ADD,
+                                                   VkBlendFactor srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE, VkBlendFactor dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO, VkBlendOp alphaBlendOp = VK_BLEND_OP_ADD);
+        CmVKPipeline *SetDynamicState(const std::vector<VkDynamicState> &dynamicStates);
+        CmVKPipeline *EnableAlphaBlend();
+        CmVKPipeline *EnableDepthTest();
+
+        VkPipeline GetHandle() const { return mHandle; }
+    private:
+        VkPipeline mHandle = VK_NULL_HANDLE;
+        CmVKDevice *mDevice;
+        CmVKRenderPass *mRenderPass;
+        CmVKPipelineLayout *mPipelineLayout;
+
+        PipelineConfig mPipelineConfig;
+    };
+}

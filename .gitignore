@@ -1,0 +1,21 @@
+# Build outputs
+/build/
+/out/
+/cmake-build-*/
+
+# Editor and IDE
+/.idea/
+/.vs/
+/.vscode/
+
+# CMake generated files
+/CMakeUserPresets.json
+
+# Repository-local planning docs
+/AGENTS.md
+/ROADMAP.md
+/TODO.md
+/Docs/
+
+# Keep the public repository entry point
+!/README.md
