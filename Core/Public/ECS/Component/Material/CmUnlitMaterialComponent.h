@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CmMaterialComponent.h"
 
@@ -33,17 +33,17 @@ namespace chimi{
 
         void SetBaseColor0(const glm::vec3 &color) {
             mParams.baseColor0 = color;
-            bShouldFlushParams = true;
+            MarkParamsDirty();
         }
 
         void SetBaseColor1(const glm::vec3 &color) {
             mParams.baseColor1 = color;
-            bShouldFlushParams = true;
+            MarkParamsDirty();
         }
 
         void SetMixValue(float mixValue) {
             mParams.mixValue = mixValue;
-            bShouldFlushParams = true;
+            MarkParamsDirty();
         }
     private:
         UnlitMaterialUbo mParams{};

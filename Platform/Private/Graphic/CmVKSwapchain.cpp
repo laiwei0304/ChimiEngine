@@ -1,4 +1,4 @@
-﻿#include "Graphic/CmVKSwapchain.h"
+#include "Graphic/CmVKSwapchain.h"
 #include "Graphic/CmVKGraphicContext.h"
 #include "Graphic/CmVKDevice.h"
 #include "Graphic/CmVKQueue.h"
@@ -84,10 +84,13 @@ namespace chimi
         VkResult ret = vkCreateSwapchainKHR(mDevice->GetHandle(), &swapchainInfo, nullptr, &mHandle);
         if(ret != VK_SUCCESS){
             LOG_E("{0} : {1}", __FUNCTION__, vk_result_string(ret));
+            mHandle = oldSwapchain;
             return false;
         }
         LOG_T("Swapchain {0} : old: {1}, new: {2}, image count: {3}, format: {4}, present mode : {5}", __FUNCTION__, (void*)oldSwapchain, (void*)mHandle, imageCount,
               vk_format_string(mSurfaceInfo.surfaceFormat.format), vk_present_mode_string(mSurfaceInfo.presentMode));
+
+        VK_D(SwapchainKHR, mDevice->GetHandle(), oldSwapchain);
 
         uint32_t swapchainImageCount;
         ret = vkGetSwapchainImagesKHR(mDevice->GetHandle(), mHandle, &swapchainImageCount, nullptr);
@@ -173,7 +176,6 @@ namespace chimi
                 .pImageIndices = reinterpret_cast<const uint32_t *>(&imageIndex)
         };
         VkResult ret = vkQueuePresentKHR(mDevice->GetFirstPresentQueue()->GetHandle(), &presentInfo);
-        mDevice->GetFirstPresentQueue()->WaitIdle();
         return ret;
     }
 }

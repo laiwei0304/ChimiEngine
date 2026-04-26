@@ -1,4 +1,4 @@
-﻿#include "Event/CmEventDispatcher.h"
+#include "Event/CmEventDispatcher.h"
 #include "spdlog/stopwatch.h"
 #include "CmLog.h"
 

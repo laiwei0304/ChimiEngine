@@ -1,4 +1,4 @@
-﻿#include "CmEntryPoint.h"
+#include "CmEntryPoint.h"
 #include "CmFileUtil.h"
 #include "Graphic/CmVKRenderPass.h"
 #include "Graphic/CmVKCommandBuffer.h"
@@ -202,12 +202,13 @@ protected:
         if(mRenderer->Begin(&imageIndex)){
             mRenderTarget->SetExtent({ swapchain->GetWidth(), swapchain->GetHeight() });
         }
+        uint32_t frameIndex = mRenderer->GetCurrentBufferIndex();
 
         VkCommandBuffer cmdBuffer = mCmdBuffers[imageIndex];
         chimi::CmVKCommandPool::BeginCommandBuffer(cmdBuffer);
 
         mRenderTarget->Begin(cmdBuffer);
-        mRenderTarget->RenderMaterialSystems(cmdBuffer);
+        mRenderTarget->RenderMaterialSystems(cmdBuffer, frameIndex);
         mRenderTarget->End(cmdBuffer);
 
         chimi::CmVKCommandPool::EndCommandBuffer(cmdBuffer);

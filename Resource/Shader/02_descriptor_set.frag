@@ -1,4 +1,4 @@
-﻿#version 450
+#version 450
 
 layout(location=1) in vec2 v_Texcoord;
 layout(set=0, binding=2) uniform sampler2D u_texture0;

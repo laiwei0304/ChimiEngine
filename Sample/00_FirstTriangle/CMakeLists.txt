@@ -1,4 +1,4 @@
-﻿set(CHIMI_00_FIRST_TRIANGLE_SHADER_SOURCES
+set(CHIMI_00_FIRST_TRIANGLE_SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/Resource/Shader/00_hello_triangle.vert
     ${CMAKE_SOURCE_DIR}/Resource/Shader/00_hello_triangle.frag
 )
@@ -28,7 +28,3 @@ add_custom_target(chimi_00_first_triangle_shaders
 add_executable(00_FirstTriangle Main.cpp)
 add_dependencies(00_FirstTriangle chimi_00_first_triangle_shaders)
 target_link_libraries(00_FirstTriangle PRIVATE chimi_core)
-target_compile_definitions(00_FirstTriangle
-    PRIVATE
-        CHIMI_SHADER_OUTPUT_DIR="${CHIMI_SHADER_OUTPUT_DIR}"
-)

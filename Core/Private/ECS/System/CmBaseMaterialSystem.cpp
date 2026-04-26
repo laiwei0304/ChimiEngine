@@ -1,4 +1,4 @@
-﻿#include "ECS/System/CmBaseMaterialSystem.h"
+#include "ECS/System/CmBaseMaterialSystem.h"
 #include "CmFileUtil.h"
 #include "CmGeometryUtil.h"
 #include "CmApplication.h"
@@ -26,8 +26,8 @@ namespace chimi{
             }
         };
         mPipelineLayout = std::make_shared<CmVKPipelineLayout>(device,
-                                                               CHIMI_RES_SHADER_DIR"01_hello_buffer.vert",
-                                                               CHIMI_RES_SHADER_DIR"01_hello_buffer.frag",
+                                                               CHIMI_SHADER_OUTPUT_DIR"/01_hello_buffer.vert",
+                                                               CHIMI_SHADER_OUTPUT_DIR"/01_hello_buffer.frag",
                                                                shaderLayout);
         std::vector<VkVertexInputBindingDescription> vertexBindings = {
             {
@@ -64,7 +64,9 @@ namespace chimi{
         mPipeline->Create();
     }
 
-    void CmBaseMaterialSystem::OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget) {
+    void CmBaseMaterialSystem::OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget, uint32_t frameIndex) {
+        (void)frameIndex;
+
         CmScene *scene = GetScene();
         if(!scene){
             return;

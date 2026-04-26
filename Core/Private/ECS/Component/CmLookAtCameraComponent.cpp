@@ -1,4 +1,4 @@
-﻿#include "ECS/Component/CmLookAtCameraComponent.h"
+#include "ECS/Component/CmLookAtCameraComponent.h"
 #include "ECS/Component/CmTransformComponent.h"
 
 namespace chimi{

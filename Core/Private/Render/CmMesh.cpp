@@ -1,4 +1,4 @@
-﻿#include "Render/CmMesh.h"
+#include "Render/CmMesh.h"
 #include "Render/CmRenderContext.h"
 #include "CmApplication.h"
 

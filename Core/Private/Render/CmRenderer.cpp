@@ -1,4 +1,4 @@
-﻿#include "Render/CmRenderer.h"
+#include "Render/CmRenderer.h"
 #include "CmApplication.h"
 #include "Graphic/CmVKQueue.h"
 
@@ -6,9 +6,9 @@ namespace chimi{
     CmRenderer::CmRenderer() {
         chimi::CmRenderContext *renderCxt = CmApplication::GetAppContext()->renderCxt;
         chimi::CmVKDevice *device = renderCxt->GetDevice();
+        chimi::CmVKSwapchain *swapchain = renderCxt->GetSwapchain();
 
         mImageAvailableSemaphores.resize(RENDERER_NUM_BUFFER);
-        mSubmitedSemaphores.resize(RENDERER_NUM_BUFFER);
         mFrameFences.resize(RENDERER_NUM_BUFFER);
         VkSemaphoreCreateInfo semaphoreInfo = {
                 .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -23,9 +23,9 @@ namespace chimi{
         };
         for(int i = 0; i < RENDERER_NUM_BUFFER; i++){
             CALL_VK(vkCreateSemaphore(device->GetHandle(), &semaphoreInfo, nullptr, &mImageAvailableSemaphores[i]));
-            CALL_VK(vkCreateSemaphore(device->GetHandle(), &semaphoreInfo, nullptr, &mSubmitedSemaphores[i]));
             CALL_VK(vkCreateFence(device->GetHandle(), &fenceInfo, nullptr, &mFrameFences[i]));
         }
+        EnsureSubmittedSemaphores(swapchain->GetImages().size());
     }
 
     CmRenderer::~CmRenderer() {
@@ -57,6 +57,9 @@ namespace chimi{
             CALL_VK(vkDeviceWaitIdle(device->GetHandle()));
             VkExtent2D originExtent = { swapchain->GetWidth(), swapchain->GetHeight() };
             bool bSuc = swapchain->ReCreate();
+            if(bSuc){
+                EnsureSubmittedSemaphores(swapchain->GetImages().size());
+            }
 
             VkExtent2D newExtent = { swapchain->GetWidth(), swapchain->GetHeight() };
             if(bSuc && (originExtent.width != newExtent.width || originExtent.height != newExtent.height)){
@@ -76,23 +79,49 @@ namespace chimi{
         chimi::CmVKSwapchain *swapchain = renderCxt->GetSwapchain();
         bool bShouldUpdateTarget = false;
 
-        device->GetFirstGraphicQueue()->Submit(cmdBuffers, { mImageAvailableSemaphores[mCurrentBuffer] }, { mSubmitedSemaphores[mCurrentBuffer] }, mFrameFences[mCurrentBuffer]);
+        VkSemaphore submittedSemaphore = mSubmitedSemaphores[imageIndex];
+        device->GetFirstGraphicQueue()->Submit(cmdBuffers, { mImageAvailableSemaphores[mCurrentBuffer] }, { submittedSemaphore }, mFrameFences[mCurrentBuffer]);
 
-        VkResult ret = swapchain->Present(imageIndex, { mSubmitedSemaphores[mCurrentBuffer] });
-        if(ret == VK_SUBOPTIMAL_KHR){
+        VkResult ret = swapchain->Present(imageIndex, { submittedSemaphore });
+        if(ret == VK_SUBOPTIMAL_KHR || ret == VK_ERROR_OUT_OF_DATE_KHR){
             CALL_VK(vkDeviceWaitIdle(device->GetHandle()));
             VkExtent2D originExtent = { swapchain->GetWidth(), swapchain->GetHeight() };
             bool bSuc = swapchain->ReCreate();
+            if(bSuc){
+                EnsureSubmittedSemaphores(swapchain->GetImages().size());
+            }
 
             VkExtent2D newExtent = { swapchain->GetWidth(), swapchain->GetHeight() };
             if(bSuc && (originExtent.width != newExtent.width || originExtent.height != newExtent.height)){
                 bShouldUpdateTarget = true;
             }
         }
-        // if we do not add vkDeviceWaitIdle, we will get a vulkan error:
-        // Cannot call vkUpdateDescriptorSets() to perform write update on VkDescriptorSet xxx allocated with VkDescriptorSetLayout xxx that is in use by a command buffer.
-        CALL_VK(vkDeviceWaitIdle(device->GetHandle()));
         mCurrentBuffer = (mCurrentBuffer + 1) % RENDERER_NUM_BUFFER;
         return bShouldUpdateTarget;
+    }
+
+    void CmRenderer::EnsureSubmittedSemaphores(uint32_t imageCount) {
+        chimi::CmRenderContext *renderCxt = CmApplication::GetAppContext()->renderCxt;
+        chimi::CmVKDevice *device = renderCxt->GetDevice();
+
+        VkSemaphoreCreateInfo semaphoreInfo = {
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0
+        };
+
+        uint32_t oldSize = static_cast<uint32_t>(mSubmitedSemaphores.size());
+        if(oldSize < imageCount){
+            mSubmitedSemaphores.resize(imageCount);
+            for(uint32_t i = oldSize; i < imageCount; i++){
+                CALL_VK(vkCreateSemaphore(device->GetHandle(), &semaphoreInfo, nullptr, &mSubmitedSemaphores[i]));
+            }
+            return;
+        }
+
+        for(uint32_t i = imageCount; i < oldSize; i++){
+            VK_D(Semaphore, device->GetHandle(), mSubmitedSemaphores[i]);
+        }
+        mSubmitedSemaphores.resize(imageCount);
     }
 }

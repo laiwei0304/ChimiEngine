@@ -1,4 +1,4 @@
-﻿add_library(chimi_core
+add_library(chimi_core
         Private/CmApplication.cpp
         Private/Render/CmRenderContext.cpp
         Private/Render/CmRenderTarget.cpp

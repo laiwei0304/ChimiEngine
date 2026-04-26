@@ -1,4 +1,4 @@
-﻿#include "Render/CmMaterial.h"
+#include "Render/CmMaterial.h"
 
 namespace chimi{
     CmMaterialFactory CmMaterialFactory::s_MaterialFactory{};
@@ -24,34 +24,34 @@ namespace chimi{
         } else {
             mTextures[id] = { texture, sampler };
         }
-        bShouldFlushResource = true;
+        MarkResourceDirty();
     }
 
     void CmMaterial::UpdateTextureViewEnable(uint32_t id, bool enable) {
         if(HasTexture(id)){
             mTextures[id].bEnable = enable;
-            bShouldFlushParams = true;
+            MarkParamsDirty();
         }
     }
 
     void CmMaterial::UpdateTextureViewUVTranslation(uint32_t id, const glm::vec2 &uvTranslation) {
         if(HasTexture(id)){
             mTextures[id].uvTranslation = uvTranslation;
-            bShouldFlushParams = true;
+            MarkParamsDirty();
         }
     }
 
     void CmMaterial::UpdateTextureViewUVRotation(uint32_t id, float uvRotation) {
         if(HasTexture(id)){
             mTextures[id].uvRotation = uvRotation;
-            bShouldFlushParams = true;
+            MarkParamsDirty();
         }
     }
 
     void CmMaterial::UpdateTextureViewUVScale(uint32_t id, const glm::vec2 &uvScale) {
         if(HasTexture(id)){
             mTextures[id].uvScale = uvScale;
-            bShouldFlushParams = true;
+            MarkParamsDirty();
         }
     }
 }

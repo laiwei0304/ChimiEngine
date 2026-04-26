@@ -1,4 +1,4 @@
-﻿#include "Graphic/CmVKGraphicContext.h"
+#include "Graphic/CmVKGraphicContext.h"
 #include "Window/CmGLFWwindow.h"
 #include <iostream>
 
@@ -191,6 +191,8 @@ namespace chimi
                 continue;
             }
 
+            QueueFamilyInfo graphicQueueFamily;
+            QueueFamilyInfo presentQueueFamily;
             for(int j = 0; j < queueFamilyCount; j++){
                 if(queueFamilys[j].queueCount == 0){
                     continue;
@@ -198,12 +200,12 @@ namespace chimi
 
                 //1. graphic family
                 if(queueFamilys[j].queueFlags & VK_QUEUE_GRAPHICS_BIT){
-                    mGraphicQueueFamily.queueFamilyIndex = j;
-                    mGraphicQueueFamily.queueCount = queueFamilys[j].queueCount;
+                    graphicQueueFamily.queueFamilyIndex = j;
+                    graphicQueueFamily.queueCount = queueFamilys[j].queueCount;
                 }
 
-                if(mGraphicQueueFamily.queueFamilyIndex >= 0 && mPresentQueueFamily.queueFamilyIndex >= 0
-                    && mGraphicQueueFamily.queueFamilyIndex != mPresentQueueFamily.queueFamilyIndex){
+                if(graphicQueueFamily.queueFamilyIndex >= 0 && presentQueueFamily.queueFamilyIndex >= 0
+                    && graphicQueueFamily.queueFamilyIndex != presentQueueFamily.queueFamilyIndex){
                     break;
                 }
 
@@ -211,13 +213,15 @@ namespace chimi
                 VkBool32 bSupportSurface;
                 vkGetPhysicalDeviceSurfaceSupportKHR(phyDevices[i], j, mSurface, &bSupportSurface);
                 if(bSupportSurface){
-                    mPresentQueueFamily.queueFamilyIndex = j;
-                    mPresentQueueFamily.queueCount = queueFamilys[j].queueCount;
+                    presentQueueFamily.queueFamilyIndex = j;
+                    presentQueueFamily.queueCount = queueFamilys[j].queueCount;
                 }
             }
-            if(mGraphicQueueFamily.queueFamilyIndex >= 0 && mPresentQueueFamily.queueFamilyIndex >= 0){
+            if(graphicQueueFamily.queueFamilyIndex >= 0 && presentQueueFamily.queueFamilyIndex >= 0){
                 maxScorePhyDeviceIndex = i;
                 maxScore = score;
+                mGraphicQueueFamily = graphicQueueFamily;
+                mPresentQueueFamily = presentQueueFamily;
             }
         }
         LOG_D("-----------------------------");

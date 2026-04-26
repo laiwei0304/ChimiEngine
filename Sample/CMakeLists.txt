@@ -1,2 +1,2 @@
-﻿add_subdirectory(00_FirstTriangle)
+add_subdirectory(00_FirstTriangle)
 add_subdirectory(SandBox)

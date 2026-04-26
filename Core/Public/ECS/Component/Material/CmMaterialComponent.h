@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Render/CmMesh.h"
 #include "Render/CmMaterial.h"

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ECS/System/CmMaterialSystem.h"
 #include "ECS/Component/CmTransformComponent.h"
@@ -17,7 +17,7 @@ namespace chimi{
     class CmBaseMaterialSystem : public CmMaterialSystem{
     public:
         void OnInit(CmVKRenderPass *renderPass) override;
-        void OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget) override;
+        void OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget, uint32_t frameIndex) override;
         void OnDestroy() override;
     private:
         std::shared_ptr<CmVKPipelineLayout> mPipelineLayout;

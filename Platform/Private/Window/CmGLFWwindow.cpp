@@ -1,4 +1,4 @@
-﻿#include "Window/CmGLFWwindow.h"
+#include "Window/CmGLFWwindow.h"
 #include "Event/CmEventDispatcher.h"
 #include "CmLog.h"
 #include "GLFW/glfw3native.h"
@@ -10,6 +10,7 @@ namespace chimi
             LOG_E("Failed to init glfw.");
             return;
         }
+        bGLFWInitialized = true;
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
@@ -33,15 +34,19 @@ namespace chimi
 
         glfwMakeContextCurrent(mGLFWwindow);
 
-        // SetupWindowCallbacks();
+        SetupWindowCallbacks();
 
         // show window
         glfwShowWindow(mGLFWwindow);
     }
 
     CmGLFWwindow::~CmGLFWwindow() {
-        glfwDestroyWindow(mGLFWwindow);
-        glfwTerminate();
+        if(mGLFWwindow){
+            glfwDestroyWindow(mGLFWwindow);
+        }
+        if(bGLFWInitialized){
+            glfwTerminate();
+        }
         LOG_I("The application running end.");
     }
 

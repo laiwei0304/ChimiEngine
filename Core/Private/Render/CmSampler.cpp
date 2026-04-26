@@ -1,4 +1,4 @@
-﻿#include "Render/CmSampler.h"
+#include "Render/CmSampler.h"
 
 #include "CmApplication.h"
 #include "Render/CmRenderContext.h"

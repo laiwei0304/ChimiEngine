@@ -1,4 +1,4 @@
-﻿#include "Graphic/CmVKBuffer.h"
+#include "Graphic/CmVKBuffer.h"
 #include "Graphic/CmVKDevice.h"
 
 namespace chimi{

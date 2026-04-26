@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CmWindow.h"
 #include <GLFW/glfw3.h>
@@ -26,6 +26,7 @@ namespace chimi
         private:
             void SetupWindowCallbacks();
 
-            GLFWwindow *mGLFWwindow;
+            GLFWwindow *mGLFWwindow = nullptr;
+            bool bGLFWInitialized = false;
     };
 }

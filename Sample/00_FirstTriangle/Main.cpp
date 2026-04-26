@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include "CmLog.h"
 #include "CmFileUtil.h"
 #include "CmGeometryUtil.h"

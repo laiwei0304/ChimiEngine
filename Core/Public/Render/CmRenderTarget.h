@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Graphic/CmVKFrameBuffer.h"
 #include "Render/CmRenderContext.h"
@@ -33,9 +33,9 @@ namespace chimi{
             mMaterialSystemList.push_back(system);
         }
 
-        void RenderMaterialSystems(VkCommandBuffer cmdBuffer) {
+        void RenderMaterialSystems(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
             for (auto &item: mMaterialSystemList){
-                item->OnRender(cmdBuffer, this);
+                item->OnRender(cmdBuffer, this, frameIndex);
             }
         }
 

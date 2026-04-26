@@ -1,4 +1,4 @@
-﻿#include "ECS/CmNode.h"
+#include "ECS/CmNode.h"
 
 namespace chimi{
     CmUUID CmNode::GetId() const {

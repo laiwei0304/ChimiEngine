@@ -1,4 +1,4 @@
-﻿#include "Graphic/CmVKImageView.h"
+#include "Graphic/CmVKImageView.h"
 #include "Graphic/CmVKDevice.h"
 
 namespace chimi

@@ -1,4 +1,4 @@
-﻿#include "Graphic/CmVKPipeline.h"
+#include "Graphic/CmVKPipeline.h"
 #include "CmFileUtil.h"
 #include "Graphic/CmVKRenderPass.h"
 #include "Graphic/CmVKDevice.h"

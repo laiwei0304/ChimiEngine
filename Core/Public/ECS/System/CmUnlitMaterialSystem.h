@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ECS/System/CmMaterialSystem.h"
 #include "ECS/Component/Material/CmUnlitMaterialComponent.h"
@@ -15,13 +15,16 @@ namespace chimi{
     class CmUnlitMaterialSystem : public CmMaterialSystem{
     public:
         void OnInit(CmVKRenderPass *renderPass) override;
-        void OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget) override;
+        void OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget, uint32_t frameIndex) override;
         void OnDestroy() override;
     private:
-        void ReCreateMaterialDescPool(uint32_t materialCount);
-        void UpdateFrameUboDescSet(CmRenderTarget *renderTarget);
-        void UpdateMaterialParamsDescSet(VkDescriptorSet descSet, CmUnlitMaterial *material);
-        void UpdateMaterialResourceDescSet(VkDescriptorSet descSet, CmUnlitMaterial *material);
+        void InitFrameUboDescriptors();
+        void EnsureMaterialCapacity(uint32_t frameIndex, uint32_t materialCount);
+        void UpdateFrameUbo(uint32_t frameIndex, CmRenderTarget *renderTarget);
+        void UpdateMaterialParamsDescSet(uint32_t frameIndex, uint32_t materialIndex, CmUnlitMaterial *material);
+        bool UpdateMaterialResourceDescSet(uint32_t frameIndex, uint32_t materialIndex, CmUnlitMaterial *material);
+        bool AreMaterialParamsSynced(uint32_t materialIndex, const CmUnlitMaterial *material) const;
+        bool AreMaterialResourcesSynced(uint32_t materialIndex, const CmUnlitMaterial *material) const;
 
         std::shared_ptr<CmVKDescriptorSetLayout> mFrameUboDescSetLayout;
         std::shared_ptr<CmVKDescriptorSetLayout> mMaterialParamDescSetLayout;
@@ -31,14 +34,17 @@ namespace chimi{
         std::shared_ptr<CmVKPipeline> mPipeline;
 
         std::shared_ptr<CmVKDescriptorPool> mDescriptorPool;
-        std::shared_ptr<CmVKDescriptorPool> mMaterialDescriptorPool;
+        std::vector<std::shared_ptr<CmVKDescriptorPool>> mMaterialDescriptorPools;
 
-        VkDescriptorSet mFrameUboDescSet;
-        std::shared_ptr<CmVKBuffer> mFrameUboBuffer;
+        std::vector<VkDescriptorSet> mFrameUboDescSets;
+        std::vector<std::shared_ptr<CmVKBuffer>> mFrameUboBuffers;
 
-        uint32_t mLastDescriptorSetCount = 0;
-        std::vector<VkDescriptorSet> mMaterialDescSets;
-        std::vector<VkDescriptorSet> mMaterialResourceDescSets;
-        std::vector<std::shared_ptr<CmVKBuffer>> mMaterialBuffers;
+        std::vector<uint32_t> mMaterialDescriptorSetCounts;
+        std::vector<std::vector<VkDescriptorSet>> mMaterialDescSets;
+        std::vector<std::vector<VkDescriptorSet>> mMaterialResourceDescSets;
+        std::vector<std::vector<std::shared_ptr<CmVKBuffer>>> mMaterialBuffers;
+        std::vector<std::vector<uint64_t>> mMaterialParamVersions;
+        std::vector<std::vector<uint64_t>> mMaterialResourceVersions;
+        std::vector<std::vector<bool>> mMaterialResourceValid;
     };
 }

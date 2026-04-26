@@ -1,4 +1,4 @@
-﻿#include "ECS/System/CmUnlitMaterialSystem.h"
+#include "ECS/System/CmUnlitMaterialSystem.h"
 
 #include "CmFileUtil.h"
 #include "CmApplication.h"
@@ -7,11 +7,16 @@
 #include "Graphic/CmVKImageView.h"
 #include "Graphic/CmVKFrameBuffer.h"
 
+#include "Render/CmRenderer.h"
 #include "Render/CmRenderTarget.h"
 
 #include "ECS/Component/CmTransformComponent.h"
 
 namespace chimi{
+    static bool HasTextureBinding(const TextureView *textureView) {
+        return textureView && textureView->texture && textureView->sampler;
+    }
+
     void CmUnlitMaterialSystem::OnInit(CmVKRenderPass *renderPass) {
         CmVKDevice *device = GetDevice();
 
@@ -71,8 +76,8 @@ namespace chimi{
             .pushConstants = { modelPC }
         };
         mPipelineLayout = std::make_shared<CmVKPipelineLayout>(device,
-                                                               CHIMI_RES_SHADER_DIR"03_unlit_material.vert",
-                                                               CHIMI_RES_SHADER_DIR"03_unlit_material.frag",
+                                                               CHIMI_SHADER_OUTPUT_DIR"/03_unlit_material.vert",
+                                                               CHIMI_SHADER_OUTPUT_DIR"/03_unlit_material.frag",
                                                                shaderLayout);
 
         std::vector<VkVertexInputBindingDescription> vertexBindings = {
@@ -109,24 +114,24 @@ namespace chimi{
         mPipeline->SetMultisampleState(VK_SAMPLE_COUNT_4_BIT, VK_FALSE);
         mPipeline->Create();
 
-        std::vector<VkDescriptorPoolSize> poolSizes = {
-            {
-                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1
-            }
-        };
-        mDescriptorPool = std::make_shared<CmVKDescriptorPool>(device, 1, poolSizes);
-        mFrameUboDescSet = mDescriptorPool->AllocateDescriptorSet(mFrameUboDescSetLayout.get(), 1)[0];
-        mFrameUboBuffer = std::make_shared<chimi::CmVKBuffer>(device, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(FrameUbo), nullptr, true);
+        InitFrameUboDescriptors();
 
-        ReCreateMaterialDescPool(NUM_MATERIAL_BATCH);
+        mMaterialDescriptorPools.resize(RENDERER_NUM_BUFFER);
+        mMaterialDescriptorSetCounts.resize(RENDERER_NUM_BUFFER);
+        mMaterialDescSets.resize(RENDERER_NUM_BUFFER);
+        mMaterialResourceDescSets.resize(RENDERER_NUM_BUFFER);
+        mMaterialBuffers.resize(RENDERER_NUM_BUFFER);
+        mMaterialParamVersions.resize(RENDERER_NUM_BUFFER);
+        mMaterialResourceVersions.resize(RENDERER_NUM_BUFFER);
+        mMaterialResourceValid.resize(RENDERER_NUM_BUFFER);
     }
 
-    void CmUnlitMaterialSystem::OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget) {
+    void CmUnlitMaterialSystem::OnRender(VkCommandBuffer cmdBuffer, CmRenderTarget *renderTarget, uint32_t frameIndex) {
         CmScene *scene = GetScene();
         if(!scene){
             return;
         }
+        frameIndex = frameIndex % RENDERER_NUM_BUFFER;
         entt::registry &reg = scene->GetEcsRegistry();
 
         auto view = reg.view<CmTransformComponent, CmUnlitMaterialComponent>();
@@ -151,17 +156,13 @@ namespace chimi{
         };
         vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 
-        UpdateFrameUboDescSet(renderTarget);
+        UpdateFrameUbo(frameIndex, renderTarget);
 
-        bool bShouldForceUpdateMaterial = false;
         uint32_t materialCount = CmMaterialFactory::GetInstance()->GetMaterialSize<CmUnlitMaterial>();
-        if(materialCount > mLastDescriptorSetCount){
-            ReCreateMaterialDescPool(materialCount);
-            bShouldForceUpdateMaterial = true;
-        }
+        EnsureMaterialCapacity(frameIndex, materialCount);
 
         std::vector<bool> updateFlags(materialCount);
-        view.each([this, &updateFlags, &bShouldForceUpdateMaterial, &cmdBuffer](CmTransformComponent &transComp, CmUnlitMaterialComponent &materialComp){
+        view.each([this, frameIndex, &updateFlags, &cmdBuffer](CmTransformComponent &transComp, CmUnlitMaterialComponent &materialComp){
             for (const auto &entry: materialComp.GetMeshMaterials()){
                 CmUnlitMaterial *material = entry.first;
                 if(!material || material->GetIndex() < 0){
@@ -170,24 +171,31 @@ namespace chimi{
                 }
 
                 uint32_t materialIndex = material->GetIndex();
-                VkDescriptorSet paramsDescSet = mMaterialDescSets[materialIndex];
-                VkDescriptorSet resourceDescSet = mMaterialResourceDescSets[materialIndex];
+                VkDescriptorSet paramsDescSet = mMaterialDescSets[frameIndex][materialIndex];
+                VkDescriptorSet resourceDescSet = mMaterialResourceDescSets[frameIndex][materialIndex];
 
                 if(!updateFlags[materialIndex]){
-                    if(material->ShouldFlushParams() || bShouldForceUpdateMaterial){
-                        //LOG_T("Update material params : {0}", materialIndex);
-                        UpdateMaterialParamsDescSet(paramsDescSet, material);
+                    if(mMaterialParamVersions[frameIndex][materialIndex] != material->GetParamsVersion()){
+                        UpdateMaterialParamsDescSet(frameIndex, materialIndex, material);
+                    }
+                    if(AreMaterialParamsSynced(materialIndex, material)){
                         material->FinishFlushParams();
                     }
-                    if(material->ShouldFlushResource() || bShouldForceUpdateMaterial){
-                        //LOG_T("Update material resource : {0}", materialIndex);
-                        UpdateMaterialResourceDescSet(resourceDescSet, material);
+                    if(mMaterialResourceVersions[frameIndex][materialIndex] != material->GetResourceVersion()){
+                        if(!UpdateMaterialResourceDescSet(frameIndex, materialIndex, material)){
+                            continue;
+                        }
+                    }
+                    if(!mMaterialResourceValid[frameIndex][materialIndex]){
+                        continue;
+                    }
+                    if(AreMaterialResourcesSynced(materialIndex, material)){
                         material->FinishFlushResource();
                     }
                     updateFlags[materialIndex] = true;
                 }
 
-                VkDescriptorSet descriptorSets[] = { mFrameUboDescSet, paramsDescSet, resourceDescSet };
+                VkDescriptorSet descriptorSets[] = { mFrameUboDescSets[frameIndex], paramsDescSet, resourceDescSet };
                 vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mPipelineLayout->GetHandle(),
                                         0, ARRAY_SIZE(descriptorSets), descriptorSets, 0, nullptr);
 
@@ -205,31 +213,53 @@ namespace chimi{
 
     }
 
-    void CmUnlitMaterialSystem::ReCreateMaterialDescPool(uint32_t materialCount) {
+    void CmUnlitMaterialSystem::InitFrameUboDescriptors() {
         CmVKDevice *device = GetDevice();
 
-        uint32_t newDescriptorSetCount = mLastDescriptorSetCount;
-        if(mLastDescriptorSetCount == 0){
+        std::vector<VkDescriptorPoolSize> poolSizes = {
+            {
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = RENDERER_NUM_BUFFER
+            }
+        };
+        mDescriptorPool = std::make_shared<CmVKDescriptorPool>(device, RENDERER_NUM_BUFFER, poolSizes);
+        mFrameUboDescSets = mDescriptorPool->AllocateDescriptorSet(mFrameUboDescSetLayout.get(), RENDERER_NUM_BUFFER);
+        mFrameUboBuffers.resize(RENDERER_NUM_BUFFER);
+
+        std::vector<VkWriteDescriptorSet> writes;
+        std::vector<VkDescriptorBufferInfo> bufferInfos(RENDERER_NUM_BUFFER);
+        for(uint32_t frameIndex = 0; frameIndex < RENDERER_NUM_BUFFER; frameIndex++){
+            mFrameUboBuffers[frameIndex] = std::make_shared<CmVKBuffer>(device, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(FrameUbo), nullptr, true);
+            bufferInfos[frameIndex] = DescriptorSetWriter::BuildBufferInfo(mFrameUboBuffers[frameIndex]->GetHandle(), 0, sizeof(FrameUbo));
+            writes.push_back(DescriptorSetWriter::WriteBuffer(mFrameUboDescSets[frameIndex], 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &bufferInfos[frameIndex]));
+        }
+        DescriptorSetWriter::UpdateDescriptorSets(device->GetHandle(), writes);
+    }
+
+    void CmUnlitMaterialSystem::EnsureMaterialCapacity(uint32_t frameIndex, uint32_t materialCount) {
+        CmVKDevice *device = GetDevice();
+
+        uint32_t newDescriptorSetCount = mMaterialDescriptorSetCounts[frameIndex];
+        if(newDescriptorSetCount == 0){
             newDescriptorSetCount = NUM_MATERIAL_BATCH;
         }
-
         while (newDescriptorSetCount < materialCount) {
             newDescriptorSetCount *= 2;
         }
 
+        if(newDescriptorSetCount == mMaterialDescriptorSetCounts[frameIndex]){
+            return;
+        }
         if(newDescriptorSetCount > NUM_MATERIAL_BATCH_MAX){
             LOG_E("Descriptor Set max count is : {0}, but request : {1}", NUM_MATERIAL_BATCH_MAX, newDescriptorSetCount);
             return;
         }
 
-        LOG_W("{0}: {1} -> {2} S.", __FUNCTION__, mLastDescriptorSetCount, newDescriptorSetCount);
+        LOG_D("{0}: frame {1}, {2} -> {3} S.", __FUNCTION__, frameIndex, mMaterialDescriptorSetCounts[frameIndex], newDescriptorSetCount);
 
-        // Destroy old
-        mMaterialDescSets.clear();
-        mMaterialResourceDescSets.clear();
-        if(mMaterialDescriptorPool){
-            mMaterialDescriptorPool.reset();
-        }
+        mMaterialDescSets[frameIndex].clear();
+        mMaterialResourceDescSets[frameIndex].clear();
+        mMaterialDescriptorPools[frameIndex].reset();
 
         std::vector<VkDescriptorPoolSize> poolSizes = {
             {
@@ -241,24 +271,29 @@ namespace chimi{
                 .descriptorCount = newDescriptorSetCount * 2               // because has color_tex0 and color_tex1
             }
         };
-        mMaterialDescriptorPool = std::make_shared<chimi::CmVKDescriptorPool>(device, newDescriptorSetCount * 2, poolSizes);  //because has params and resource desc. set
+        mMaterialDescriptorPools[frameIndex] = std::make_shared<CmVKDescriptorPool>(device, newDescriptorSetCount * 2, poolSizes);  //because has params and resource desc. set
 
-        mMaterialDescSets = mMaterialDescriptorPool->AllocateDescriptorSet(mMaterialParamDescSetLayout.get(), newDescriptorSetCount);
-        mMaterialResourceDescSets = mMaterialDescriptorPool->AllocateDescriptorSet(mMaterialResourceDescSetLayout.get(), newDescriptorSetCount);
-        assert(mMaterialDescSets.size() == newDescriptorSetCount && "Failed to AllocateDescriptorSet");
-        assert(mMaterialResourceDescSets.size() == newDescriptorSetCount && "Failed to AllocateDescriptorSet");
+        mMaterialDescSets[frameIndex] = mMaterialDescriptorPools[frameIndex]->AllocateDescriptorSet(mMaterialParamDescSetLayout.get(), newDescriptorSetCount);
+        mMaterialResourceDescSets[frameIndex] = mMaterialDescriptorPools[frameIndex]->AllocateDescriptorSet(mMaterialResourceDescSetLayout.get(), newDescriptorSetCount);
+        assert(mMaterialDescSets[frameIndex].size() == newDescriptorSetCount && "Failed to AllocateDescriptorSet");
+        assert(mMaterialResourceDescSets[frameIndex].size() == newDescriptorSetCount && "Failed to AllocateDescriptorSet");
 
-        uint32_t diffCount = newDescriptorSetCount - mLastDescriptorSetCount;
-        for(int i = 0; i < diffCount; i++){
-            mMaterialBuffers.push_back(std::make_shared<CmVKBuffer>(device, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(UnlitMaterialUbo), nullptr, true));
+        mMaterialBuffers[frameIndex].clear();
+        mMaterialBuffers[frameIndex].reserve(newDescriptorSetCount);
+        for(uint32_t i = 0; i < newDescriptorSetCount; i++){
+            mMaterialBuffers[frameIndex].push_back(std::make_shared<CmVKBuffer>(device, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(UnlitMaterialUbo), nullptr, true));
         }
-        LOG_W("{0}: {1} -> {2} E.", __FUNCTION__, mLastDescriptorSetCount, newDescriptorSetCount);
-        mLastDescriptorSetCount = newDescriptorSetCount;
+
+        mMaterialParamVersions[frameIndex].assign(newDescriptorSetCount, 0);
+        mMaterialResourceVersions[frameIndex].assign(newDescriptorSetCount, 0);
+        mMaterialResourceValid[frameIndex].assign(newDescriptorSetCount, false);
+
+        LOG_D("{0}: frame {1}, {2} -> {3} E.", __FUNCTION__, frameIndex, mMaterialDescriptorSetCounts[frameIndex], newDescriptorSetCount);
+        mMaterialDescriptorSetCounts[frameIndex] = newDescriptorSetCount;
     }
 
-    void CmUnlitMaterialSystem::UpdateFrameUboDescSet(CmRenderTarget *renderTarget) {
+    void CmUnlitMaterialSystem::UpdateFrameUbo(uint32_t frameIndex, CmRenderTarget *renderTarget) {
         CmApplication *app = GetApp();
-        CmVKDevice *device = GetDevice();
 
         CmVKFrameBuffer *frameBuffer = renderTarget->GetFrameBuffer();
         glm::ivec2 resolution = { frameBuffer->GetWidth(), frameBuffer->GetHeight() };
@@ -271,16 +306,13 @@ namespace chimi{
             .time = app->GetStartTimeSecond()
         };
 
-        mFrameUboBuffer->WriteData(&frameUbo);
-        VkDescriptorBufferInfo bufferInfo = DescriptorSetWriter::BuildBufferInfo(mFrameUboBuffer->GetHandle(), 0, sizeof(frameUbo));
-        VkWriteDescriptorSet bufferWrite = DescriptorSetWriter::WriteBuffer(mFrameUboDescSet, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &bufferInfo);
-        DescriptorSetWriter::UpdateDescriptorSets(device->GetHandle(), { bufferWrite });
+        mFrameUboBuffers[frameIndex]->WriteData(&frameUbo);
     }
 
-    void CmUnlitMaterialSystem::UpdateMaterialParamsDescSet(VkDescriptorSet descSet, CmUnlitMaterial *material) {
+    void CmUnlitMaterialSystem::UpdateMaterialParamsDescSet(uint32_t frameIndex, uint32_t materialIndex, CmUnlitMaterial *material) {
         CmVKDevice *device = GetDevice();
 
-        CmVKBuffer *materialBuffer = mMaterialBuffers[material->GetIndex()].get();
+        CmVKBuffer *materialBuffer = mMaterialBuffers[frameIndex][materialIndex].get();
 
         UnlitMaterialUbo params = material->GetParams();
 
@@ -296,22 +328,51 @@ namespace chimi{
 
         materialBuffer->WriteData(&params);
         VkDescriptorBufferInfo bufferInfo = DescriptorSetWriter::BuildBufferInfo(materialBuffer->GetHandle(), 0, sizeof(params));
+        VkDescriptorSet descSet = mMaterialDescSets[frameIndex][materialIndex];
         VkWriteDescriptorSet bufferWrite = DescriptorSetWriter::WriteBuffer(descSet, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &bufferInfo);
         DescriptorSetWriter::UpdateDescriptorSets(device->GetHandle(), { bufferWrite });
+        mMaterialParamVersions[frameIndex][materialIndex] = material->GetParamsVersion();
     }
 
-    void CmUnlitMaterialSystem::UpdateMaterialResourceDescSet(VkDescriptorSet descSet, CmUnlitMaterial *material) {
+    bool CmUnlitMaterialSystem::UpdateMaterialResourceDescSet(uint32_t frameIndex, uint32_t materialIndex, CmUnlitMaterial *material) {
         CmVKDevice *device = GetDevice();
 
         const TextureView *texture0 = material->GetTextureView(UNLIT_MAT_BASE_COLOR_0);
         const TextureView *texture1 = material->GetTextureView(UNLIT_MAT_BASE_COLOR_1);
+        if(!HasTextureBinding(texture0) || !HasTextureBinding(texture1)){
+            mMaterialResourceVersions[frameIndex][materialIndex] = material->GetResourceVersion();
+            mMaterialResourceValid[frameIndex][materialIndex] = false;
+            return false;
+        }
 
         VkDescriptorImageInfo textureInfo0 = DescriptorSetWriter::BuildImageInfo(texture0->sampler->GetHandle(), texture0->texture->GetImageView()->GetHandle());
         VkDescriptorImageInfo textureInfo1 = DescriptorSetWriter::BuildImageInfo(texture1->sampler->GetHandle(), texture1->texture->GetImageView()->GetHandle());
 
+        VkDescriptorSet descSet = mMaterialResourceDescSets[frameIndex][materialIndex];
         VkWriteDescriptorSet textureWrite0 = DescriptorSetWriter::WriteImage(descSet, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &textureInfo0);
         VkWriteDescriptorSet textureWrite1 = DescriptorSetWriter::WriteImage(descSet, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &textureInfo1);
 
         DescriptorSetWriter::UpdateDescriptorSets(device->GetHandle(), { textureWrite0, textureWrite1 });
+        mMaterialResourceVersions[frameIndex][materialIndex] = material->GetResourceVersion();
+        mMaterialResourceValid[frameIndex][materialIndex] = true;
+        return true;
+    }
+
+    bool CmUnlitMaterialSystem::AreMaterialParamsSynced(uint32_t materialIndex, const CmUnlitMaterial *material) const {
+        for(const auto &versions: mMaterialParamVersions){
+            if(versions.size() <= materialIndex || versions[materialIndex] != material->GetParamsVersion()){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool CmUnlitMaterialSystem::AreMaterialResourcesSynced(uint32_t materialIndex, const CmUnlitMaterial *material) const {
+        for(const auto &versions: mMaterialResourceVersions){
+            if(versions.size() <= materialIndex || versions[materialIndex] != material->GetResourceVersion()){
+                return false;
+            }
+        }
+        return true;
     }
 }

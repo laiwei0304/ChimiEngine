@@ -1,4 +1,4 @@
-﻿#include "CmApplication.h"
+#include "CmApplication.h"
 #include "CmLog.h"
 #include "Render/CmRenderContext.h"
 #include "ECS/CmEntity.h"

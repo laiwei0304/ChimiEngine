@@ -1,4 +1,4 @@
-﻿#include "CmGraphicContext.h"
+#include "CmGraphicContext.h"
 #include "Graphic/CmVKGraphicContext.h"
 
 namespace chimi

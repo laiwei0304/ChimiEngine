@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CmTexture.h"
 #include "CmSampler.h"
@@ -52,6 +52,8 @@ namespace chimi{
         bool ShouldFlushResource() const { return bShouldFlushResource; }
         void FinishFlushParams() { bShouldFlushParams = false; }
         void FinishFlushResource() { bShouldFlushResource = false; }
+        uint64_t GetParamsVersion() const { return mParamsVersion; }
+        uint64_t GetResourceVersion() const { return mResourceVersion; }
 
         bool HasTexture(uint32_t id) const;
         const TextureView* GetTextureView(uint32_t id) const;
@@ -63,10 +65,22 @@ namespace chimi{
     protected:
         CmMaterial() = default;
 
+        void MarkParamsDirty() {
+            bShouldFlushParams = true;
+            mParamsVersion++;
+        }
+
+        void MarkResourceDirty() {
+            bShouldFlushResource = true;
+            mResourceVersion++;
+        }
+
         bool bShouldFlushParams = false;
         bool bShouldFlushResource = false;
     private:
         int32_t mIndex = -1;
+        uint64_t mParamsVersion = 1;
+        uint64_t mResourceVersion = 1;
         std::unordered_map<uint32_t, TextureView> mTextures;
         friend class CmMaterialFactory;
     };

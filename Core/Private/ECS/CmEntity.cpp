@@ -1,4 +1,4 @@
-﻿#include "ECS/CmEntity.h"
+#include "ECS/CmEntity.h"
 
 namespace chimi{
 

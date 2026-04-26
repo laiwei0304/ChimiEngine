@@ -1,4 +1,4 @@
-﻿#include "Render/CmRenderContext.h"
+#include "Render/CmRenderContext.h"
 
 namespace chimi{
     CmRenderContext::CmRenderContext(CmWindow *window) {

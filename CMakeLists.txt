@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.25)
 
 project(ChimiEngine VERSION 0.1.0 LANGUAGES CXX)
 
@@ -40,12 +40,17 @@ endif()
 
 add_compile_definitions(
     CHIMI_RES_ROOT_DIR="${CHIMI_RESOURCE_ROOT_DIR}"
+    CHIMI_SHADER_OUTPUT_DIR="${CHIMI_SHADER_OUTPUT_DIR}"
     GLM_FORCE_RADIANS
     GLM_FORCE_DEPTH_ZERO_TO_ONE
     CHIMI_ENABLE_VALIDATION=$<IF:$<CONFIG:Debug>,1,0>
 )
 
 include(cmake/Dependencies.cmake)
+
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
 
 add_subdirectory(Platform)
 add_subdirectory(Core)
