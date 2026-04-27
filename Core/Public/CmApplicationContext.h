@@ -1,10 +1,9 @@
 #pragma once
 
-#include "ECS/CmScene.h"
-
 namespace chimi{
     class CmApplication;
     class CmRenderContext;
+    class CmScene;
 
     struct CmAppContext{
         CmApplication *app;

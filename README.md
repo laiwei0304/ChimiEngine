@@ -148,6 +148,6 @@ The repository currently includes:
 - Introduce scene serialization and editor panels
 - Add tests, screenshots, and more development documentation
 
-## Notes
+## References
 
-This README is based on the current repository state and is intended to help new contributors understand the structure quickly and get the sample programs running.
+- [adiosy_engine](https://gitee.com/xingchen0085/adiosy_engine#adiosy_engine)
