@@ -15,6 +15,7 @@ namespace chimi{
             float yaw = transComp.rotation.x;
             float pitch = transComp.rotation.y;
 
+            // 将球坐标转换为笛卡尔坐标；计算了一个单位方向向量，代表了从目标点指向相机的方向
             glm::vec3 direction;
             direction.x = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
             direction.y = sin(glm::radians(pitch));

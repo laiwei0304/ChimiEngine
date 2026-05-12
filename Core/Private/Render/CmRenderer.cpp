@@ -100,6 +100,7 @@ namespace chimi{
         return bShouldUpdateTarget;
     }
 
+    // 确保 mSubmitedSemaphores 数量和 Swapchain Image 数量一致
     void CmRenderer::EnsureSubmittedSemaphores(uint32_t imageCount) {
         chimi::CmRenderContext *renderCxt = CmApplication::GetAppContext()->renderCxt;
         chimi::CmVKDevice *device = renderCxt->GetDevice();

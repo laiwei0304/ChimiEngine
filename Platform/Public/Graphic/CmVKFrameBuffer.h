@@ -19,6 +19,8 @@ namespace chimi
         VkFramebuffer GetHandle() const { return mHandle; }
         uint32_t GetWidth() const { return mWidth; }
         uint32_t GetHeight() const { return mHeight; }
+        CmVKImage *GetImage(uint32_t index) const { return index < mImages.size() ? mImages[index].get() : nullptr; }
+        CmVKImageView *GetImageView(uint32_t index) const { return index < mImageViews.size() ? mImageViews[index].get() : nullptr; }
     private:
         VkFramebuffer mHandle = VK_NULL_HANDLE;
         CmVKDevice *mDevice;

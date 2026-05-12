@@ -134,6 +134,7 @@ namespace chimi{
         frameIndex = frameIndex % RENDERER_NUM_BUFFER;
         entt::registry &reg = scene->GetEcsRegistry();
 
+        // 筛选出所有同时拥有 CmTransformComponent 和 CmUnlitMaterialComponent 的 Entity
         auto view = reg.view<CmTransformComponent, CmUnlitMaterialComponent>();
         if(view.begin() == view.end()){
             return;
@@ -162,7 +163,10 @@ namespace chimi{
         EnsureMaterialCapacity(frameIndex, materialCount);
 
         std::vector<bool> updateFlags(materialCount);
+
+        // 遍历所有符合条件的 Entity
         view.each([this, frameIndex, &updateFlags, &cmdBuffer](CmTransformComponent &transComp, CmUnlitMaterialComponent &materialComp){
+            // 遍历所有材质
             for (const auto &entry: materialComp.GetMeshMaterials()){
                 CmUnlitMaterial *material = entry.first;
                 if(!material || material->GetIndex() < 0){
@@ -170,17 +174,21 @@ namespace chimi{
                     continue;
                 }
 
+                // 准备描述符集
                 uint32_t materialIndex = material->GetIndex();
                 VkDescriptorSet paramsDescSet = mMaterialDescSets[frameIndex][materialIndex];
                 VkDescriptorSet resourceDescSet = mMaterialResourceDescSets[frameIndex][materialIndex];
 
+                // 惰性更新机制 (Dirty Checking)
                 if(!updateFlags[materialIndex]){
+                    // 检查 CPU 端的材质参数版本是否与 GPU 端同步
                     if(mMaterialParamVersions[frameIndex][materialIndex] != material->GetParamsVersion()){
                         UpdateMaterialParamsDescSet(frameIndex, materialIndex, material);
                     }
                     if(AreMaterialParamsSynced(materialIndex, material)){
                         material->FinishFlushParams();
                     }
+                    // 检查纹理等资源是否发生变化
                     if(mMaterialResourceVersions[frameIndex][materialIndex] != material->GetResourceVersion()){
                         if(!UpdateMaterialResourceDescSet(frameIndex, materialIndex, material)){
                             continue;
@@ -195,13 +203,16 @@ namespace chimi{
                     updateFlags[materialIndex] = true;
                 }
 
+                // 绑定管线资源，告诉 GPU 当前画图要用哪些数据
                 VkDescriptorSet descriptorSets[] = { mFrameUboDescSets[frameIndex], paramsDescSet, resourceDescSet };
                 vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mPipelineLayout->GetHandle(),
                                         0, ARRAY_SIZE(descriptorSets), descriptorSets, 0, nullptr);
 
+                // 推送变换矩阵 (Push Constants)
                 ModelPC pc = { transComp.GetTransform() };
                 vkCmdPushConstants(cmdBuffer, mPipelineLayout->GetHandle(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc), &pc);
 
+                // 遍历该材质对应的所有网格，执行绘制
                 for (const auto &meshIndex: entry.second){
                     materialComp.GetMesh(meshIndex)->Draw(cmdBuffer);
                 }

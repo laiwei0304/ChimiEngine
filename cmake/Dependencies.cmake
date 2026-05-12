@@ -42,6 +42,11 @@ FetchContent_Declare(
     URL https://github.com/nothings/stb/archive/31c1ad37456438565541f4919958214b6e762fb4.zip
 )
 
+FetchContent_Declare(
+    imgui
+    URL https://github.com/ocornut/imgui/archive/c51f1a6e47b8b5b11ca13490c461842c96bc4ca2.zip
+)
+
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -60,9 +65,42 @@ set(TINYGLTF_HEADER_ONLY ON CACHE BOOL "" FORCE)
 set(TINYGLTF_INSTALL OFF CACHE BOOL "" FORCE)
 set(TINYGLTF_INSTALL_VENDOR OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(glfw glm spdlog volk vma tinygltf entt stb)
+FetchContent_MakeAvailable(glfw glm spdlog volk vma tinygltf entt stb imgui)
 
 set(CHIMI_TINYGLTF_INCLUDE_DIR "${tinygltf_SOURCE_DIR}" CACHE INTERNAL "")
+
+if (NOT TARGET imgui)
+    add_library(imgui STATIC
+        "${imgui_SOURCE_DIR}/imgui.cpp"
+        "${imgui_SOURCE_DIR}/imgui_demo.cpp"
+        "${imgui_SOURCE_DIR}/imgui_draw.cpp"
+        "${imgui_SOURCE_DIR}/imgui_tables.cpp"
+        "${imgui_SOURCE_DIR}/imgui_widgets.cpp"
+        "${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp"
+        "${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp"
+    )
+
+    target_include_directories(imgui
+        PUBLIC
+            "${imgui_SOURCE_DIR}"
+            "${imgui_SOURCE_DIR}/backends"
+    )
+
+    target_link_libraries(imgui
+        PUBLIC
+            glfw
+            volk
+    )
+
+    target_compile_definitions(imgui
+        PUBLIC
+            GLFW_INCLUDE_NONE
+            VK_NO_PROTOTYPES
+            IMGUI_IMPL_VULKAN_USE_VOLK
+    )
+
+    target_compile_features(imgui PUBLIC cxx_std_20)
+endif()
 
 if (NOT TARGET chimi_entt)
     add_library(chimi_entt INTERFACE)

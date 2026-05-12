@@ -8,6 +8,7 @@ namespace chimi{
         uint32_t width = 800;
         uint32_t height = 600;
         const char *title = "Chimi Engine";
+        bool decorated = true;
     };
 
     class CmApplication{
@@ -17,6 +18,7 @@ namespace chimi{
         void Start(int argc, char *argv[]);
         void Stop();
         void MainLoop();
+        void Close();
 
         bool IsPause() const { return bPause; }
         void Pause() { bPause = true; }
@@ -24,6 +26,7 @@ namespace chimi{
 
         float GetStartTimeSecond() const { return std::chrono::duration<float>(std::chrono::steady_clock::now() - mStartTimePoint).count(); }
         uint64_t GetFrameIndex() const { return mFrameIndex; }
+        CmWindow *GetWindow() const { return mWindow.get(); }
     protected:
         virtual void OnConfiguration(AppSettings *appSettings){}
         virtual void OnInit(){}

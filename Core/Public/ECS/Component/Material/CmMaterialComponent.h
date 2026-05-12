@@ -8,7 +8,7 @@ namespace chimi{
     template<typename T>
     class CmMaterialComponent : public CmComponent{
     public:
-        void CmdMesh(CmMesh *mesh, T *material = nullptr){
+        void AddMesh(CmMesh *mesh, T *material = nullptr){
             if(!mesh){
                 return;
             }

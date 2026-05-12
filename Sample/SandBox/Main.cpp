@@ -62,8 +62,8 @@ protected:
         mRenderTarget = std::make_shared<chimi::CmRenderTarget>(mRenderPass.get());
         mRenderTarget->SetColorClearValue({0.1f, 0.2f, 0.3f, 1.f});
         mRenderTarget->SetDepthStencilClearValue({ 1, 0 });
-        mRenderTarget->CmdMaterialSystem<chimi::CmBaseMaterialSystem>();
-        mRenderTarget->CmdMaterialSystem<chimi::CmUnlitMaterialSystem>();
+        mRenderTarget->AddMaterialSystem<chimi::CmBaseMaterialSystem>();
+        mRenderTarget->AddMaterialSystem<chimi::CmUnlitMaterialSystem>();
 
         mRenderer = std::make_shared<chimi::CmRenderer>();
 
@@ -147,7 +147,7 @@ protected:
                 mSmallCubes[cubeIndex]->AddComponent<chimi::CmUnlitMaterialComponent>();
             }
             auto &materialComp = mSmallCubes[cubeIndex]->GetComponent<chimi::CmUnlitMaterialComponent>();
-            materialComp.CmdMesh(mCubeMesh.get(), material);
+            materialComp.AddMesh(mCubeMesh.get(), material);
 
             mUnlitMaterials.push_back(material);
             LOG_D("Unlit Material Count: {0}", mUnlitMaterials.size());
@@ -199,7 +199,8 @@ protected:
         chimi::CmVKSwapchain *swapchain = renderCxt->GetSwapchain();
 
         int32_t imageIndex;
-        if(mRenderer->Begin(&imageIndex)){
+        if(mRenderer->Begin(&imageIndex)){  // 根据 AcquireImage 返回值设置 bShouldUpdateTarget；调 CmVKSwapchain::ReCreate()
+            // 更新 Extent，同时标记需要更新 RenderTarget
             mRenderTarget->SetExtent({ swapchain->GetWidth(), swapchain->GetHeight() });
         }
         uint32_t frameIndex = mRenderer->GetCurrentBufferIndex();
@@ -207,12 +208,13 @@ protected:
         VkCommandBuffer cmdBuffer = mCmdBuffers[imageIndex];
         chimi::CmVKCommandPool::BeginCommandBuffer(cmdBuffer);
 
-        mRenderTarget->Begin(cmdBuffer);
-        mRenderTarget->RenderMaterialSystems(cmdBuffer, frameIndex);
+        mRenderTarget->Begin(cmdBuffer);    // 实际更新 RenderTarget 的地方
+        mRenderTarget->RenderMaterialSystems(cmdBuffer, frameIndex);    // 真正的渲染
         mRenderTarget->End(cmdBuffer);
 
         chimi::CmVKCommandPool::EndCommandBuffer(cmdBuffer);
-        if(mRenderer->End(imageIndex, { cmdBuffer })){
+        if(mRenderer->End(imageIndex, { cmdBuffer })){  // 根据 Present 返回值设置 bShouldUpdateTarget；调 CmVKSwapchain::ReCreate()
+            // 更新 Extent，同时标记需要更新 RenderTarget
             mRenderTarget->SetExtent({ swapchain->GetWidth(), swapchain->GetHeight() });
         }
     }

@@ -28,12 +28,16 @@ namespace chimi
 
         for(int i = 0; i < mSubPasses.size(); i++){
             RenderSubPass subpass = mSubPasses[i];
+            VkImageLayout resolveFinalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            VkImageUsageFlags resolveUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
             for (const auto &inputAttachment: subpass.inputAttachments){
                 inputAttachmentRefs[i].push_back({ inputAttachment, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
             }
 
             for (const auto &colorAttachment: subpass.colorAttachments){
+                resolveFinalLayout = mAttachments[colorAttachment].finalLayout;
+                resolveUsage = mAttachments[colorAttachment].usage;
                 colorAttachmentRefs[i].push_back({ colorAttachment, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL });
                 mAttachments[colorAttachment].samples = subpass.sampleCount;
                 if(subpass.sampleCount > VK_SAMPLE_COUNT_1_BIT){
@@ -54,9 +58,9 @@ namespace chimi
                     .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                     .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
                     .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                    .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    .finalLayout = resolveFinalLayout,
                     .samples = VK_SAMPLE_COUNT_1_BIT,
-                    .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+                    .usage = resolveUsage
                 });
                 resolveAttachmentRefs[i] = { static_cast<uint32_t>(mAttachments.size() - 1), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
             }

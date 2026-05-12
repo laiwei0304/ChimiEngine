@@ -5,7 +5,7 @@
 
 namespace chimi
 {
-    CmGLFWwindow::CmGLFWwindow(uint32_t width, uint32_t height, const char *title) {
+    CmGLFWwindow::CmGLFWwindow(uint32_t width, uint32_t height, const char *title, bool decorated) {
         if(!glfwInit()){
             LOG_E("Failed to init glfw.");
             return;
@@ -13,6 +13,7 @@ namespace chimi
         bGLFWInitialized = true;
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_DECORATED, decorated ? GLFW_TRUE : GLFW_FALSE);
 
         mGLFWwindow = glfwCreateWindow(width, height, title, nullptr, nullptr);
         if(!mGLFWwindow){
@@ -55,6 +56,10 @@ namespace chimi
         return glfwWindowShouldClose(mGLFWwindow);
     }
 
+    void CmGLFWwindow::SetShouldClose(bool shouldClose) {
+        glfwSetWindowShouldClose(mGLFWwindow, shouldClose ? GLFW_TRUE : GLFW_FALSE);
+    }
+
     void CmGLFWwindow::PollEvents()
     {
         glfwPollEvents();
@@ -63,6 +68,42 @@ namespace chimi
     void CmGLFWwindow::SwapBuffer()
     {
         glfwSwapBuffers(mGLFWwindow);
+    }
+
+    void CmGLFWwindow::GetPosition(glm::ivec2 &position) const {
+        int x, y;
+        glfwGetWindowPos(mGLFWwindow, &x, &y);
+        position = { x, y };
+    }
+
+    void CmGLFWwindow::SetPosition(const glm::ivec2 &position) {
+        glfwSetWindowPos(mGLFWwindow, position.x, position.y);
+    }
+
+    void CmGLFWwindow::GetSize(glm::ivec2 &size) const {
+        int width, height;
+        glfwGetWindowSize(mGLFWwindow, &width, &height);
+        size = { width, height };
+    }
+
+    void CmGLFWwindow::SetSize(const glm::ivec2 &size) {
+        glfwSetWindowSize(mGLFWwindow, size.x, size.y);
+    }
+
+    void CmGLFWwindow::Minimize() {
+        glfwIconifyWindow(mGLFWwindow);
+    }
+
+    void CmGLFWwindow::Maximize() {
+        glfwMaximizeWindow(mGLFWwindow);
+    }
+
+    void CmGLFWwindow::Restore() {
+        glfwRestoreWindow(mGLFWwindow);
+    }
+
+    bool CmGLFWwindow::IsMaximized() const {
+        return glfwGetWindowAttrib(mGLFWwindow, GLFW_MAXIMIZED) == GLFW_TRUE;
     }
 
     void CmGLFWwindow::GetMousePos(glm::vec2 &mousePos) const {

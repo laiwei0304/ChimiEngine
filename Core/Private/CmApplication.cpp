@@ -12,7 +12,7 @@ namespace chimi{
         ParseArgs(argc, argv);
         OnConfiguration(&mAppSettings);
 
-        mWindow = CmWindow::Create(mAppSettings.width, mAppSettings.height, mAppSettings.title);
+        mWindow = CmWindow::Create(mAppSettings.width, mAppSettings.height, mAppSettings.title, mAppSettings.decorated);
         mRenderContext = std::make_shared<CmRenderContext>(mWindow.get());
 
         sAppContext.app = this;
@@ -27,6 +27,12 @@ namespace chimi{
     void CmApplication::Stop() {
         UnLoadScene();
         OnDestroy();
+    }
+
+    void CmApplication::Close() {
+        if(mWindow){
+            mWindow->SetShouldClose(true);
+        }
     }
 
     void CmApplication::MainLoop() {

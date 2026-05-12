@@ -17,6 +17,7 @@ namespace chimi{
 
         CmVKRenderPass *GetRenderPass() const { return mRenderPass; }
         CmVKFrameBuffer *GetFrameBuffer() const { return mFrameBuffers[mCurrentBufferIdx].get(); }
+        CmVKImageView *GetImageView(uint32_t attachmentIndex) const { return GetFrameBuffer()->GetImageView(attachmentIndex); }
 
         void SetExtent(const VkExtent2D &extent);
         void SetBufferCount(uint32_t bufferCount);
@@ -27,7 +28,7 @@ namespace chimi{
         void SetDepthStencilClearValue(uint32_t attachmentIndex, VkClearDepthStencilValue depthStencilValue);
 
         template<typename T, typename... Args>
-        void CmdMaterialSystem(Args&&... args) {
+        void AddMaterialSystem(Args&&... args) {
             std::shared_ptr<CmMaterialSystem> system = std::make_shared<T>(std::forward<Args>(args)...);
             system->OnInit(mRenderPass);
             mMaterialSystemList.push_back(system);

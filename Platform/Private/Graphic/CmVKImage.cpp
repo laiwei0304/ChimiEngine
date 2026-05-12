@@ -8,12 +8,6 @@ namespace chimi
                                                                                                             mExtent(extent),
                                                                                                             mFormat(format),
                                                                                                             mUsage(usage) {
-        VkImageTiling tiling = VK_IMAGE_TILING_LINEAR;
-        bool isDepthStencilFormat = IsDepthStencilFormat(format);
-        if(isDepthStencilFormat || sampleCount > VK_SAMPLE_COUNT_1_BIT){
-            tiling = VK_IMAGE_TILING_OPTIMAL;
-        }
-
         VkImageCreateInfo imageInfo = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .pNext = nullptr,
@@ -24,7 +18,7 @@ namespace chimi
                 .mipLevels = 1,
                 .arrayLayers = 1,
                 .samples = sampleCount,
-                .tiling = tiling,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
                 .usage = usage,
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                 .queueFamilyIndexCount = 0,
@@ -47,7 +41,7 @@ namespace chimi
         CALL_VK(vkBindImageMemory(mDevice->GetHandle(), mHandle, mMemory, 0));
     }
 
-    CmVKImage::CmVKImage(CmVKDevice *device, VkImage image, VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkSampleCountFlagBits sampleCount)
+    CmVKImage::CmVKImage(CmVKDevice *device, VkImage image, VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkSampleCountFlagBits)
                             : mHandle(image), mDevice(device), mExtent(extent), mFormat(format), mUsage(usage), bCreateImage(false) {
     }
 

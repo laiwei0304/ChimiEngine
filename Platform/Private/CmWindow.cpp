@@ -3,10 +3,10 @@
 
 namespace chimi
 {
-std::unique_ptr<CmWindow> CmWindow::Create(uint32_t width, uint32_t height, const char *title)
+std::unique_ptr<CmWindow> CmWindow::Create(uint32_t width, uint32_t height, const char *title, bool decorated)
 {
 #if defined(CHIMI_ENGINE_PLATFORM_WIN32) || defined(CHIMI_ENGINE_PLATFORM_MACOS) || defined(CHIMI_ENGINE_PLATFORM_LINUX)
-    return std::make_unique<CmGLFWwindow>(width, height, title);
+    return std::make_unique<CmGLFWwindow>(width, height, title, decorated);
 #endif
     return nullptr;
 }

@@ -46,11 +46,11 @@ void main(){
     if(materialUbo.textureParam0.enable){
         TextureParam param = materialUbo.textureParam0;
         param.uvTransform.w = -frameUbo.time;
-        color0 = texture(texture0, getTextureUV(param, v_Texcoord)).rgb;
+        color0 *= texture(texture0, getTextureUV(param, v_Texcoord)).rgb;
     }
 
     if(materialUbo.textureParam1.enable){
-        color1 = texture(texture1, getTextureUV(materialUbo.textureParam1, v_Texcoord)).rgb;
+        color1 *= texture(texture1, getTextureUV(materialUbo.textureParam1, v_Texcoord)).rgb;
     }
 
     fragColor = vec4(mix(color0, color1, materialUbo.mixValue), 1.0);

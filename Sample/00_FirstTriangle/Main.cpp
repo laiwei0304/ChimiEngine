@@ -31,7 +31,7 @@ int main(){
         auto vkContext = dynamic_cast<chimi::CmVKGraphicContext*>(graphicContext.get());
         std::shared_ptr<chimi::CmVKDevice> device = std::make_shared<chimi::CmVKDevice>(vkContext, 1, 1);
         std::shared_ptr<chimi::CmVKSwapchain> swapchain = std::make_shared<chimi::CmVKSwapchain>(vkContext, device.get());
-        swapchain->ReCreate();
+        // swapchain->ReCreate();
 
         std::shared_ptr<chimi::CmVKRenderPass> renderPass = std::make_shared<chimi::CmVKRenderPass>(device.get());
 
